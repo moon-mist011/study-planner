@@ -4,7 +4,11 @@ const LEGACY_STORAGE_KEY = "study-agile-state-v1";
 const STORAGE_KEY_PREFIX = "study-agile-state-v1:";
 const PENDING_WRITE_PREFIX = "study-agile-pending-write-v1:";
 const FIREBASE_VERSION = "11.10.0";
-const SUBJECTS = ["古漢", "現代文", "数学", "英語", "物理", "化学", "歴史", "地理", "公共"];
+const DEFAULT_SUBJECTS = ["古漢", "現代文", "数学", "英語", "物理", "化学", "歴史", "地理", "公共"];
+const DEFAULT_PERIOD_COUNT = 5;
+const MAX_SUBJECTS = 30;
+const MAX_SUBJECT_LENGTH = 40;
+const MAX_PERIOD_COUNT = 20;
 
 const elements = {
   authScreen: document.querySelector("#auth-screen"),
@@ -36,6 +40,8 @@ const elements = {
   poolDialog: document.querySelector("#pool-dialog"),
   taskDialog: document.querySelector("#task-dialog"),
   completeDialog: document.querySelector("#complete-dialog"),
+  settingsDialog: document.querySelector("#settings-dialog"),
+  settingsSubjects: document.querySelector("#settings-subject-list"),
   menuDialog: document.querySelector("#menu-dialog"),
   dashboard: document.querySelector("#dashboard"),
   calendarView: document.querySelector("#calendar-view"),
@@ -85,7 +91,14 @@ function addMonths(date, months) {
 }
 
 function emptyState() {
-  return { events: [], goals: [], quizzes: [], pools: [], tasks: [] };
+  return {
+    events: [],
+    goals: [],
+    quizzes: [],
+    pools: [],
+    tasks: [],
+    settings: { subjects: [...DEFAULT_SUBJECTS], periodCount: DEFAULT_PERIOD_COUNT },
+  };
 }
 
 function normalizeState(stored) {
@@ -104,12 +117,26 @@ function normalizeState(stored) {
     events.push(legacyEvent);
     ungroupedGoals.forEach((goal) => { goal.eventId = legacyEvent.id; });
   }
+  const storedSubjects = Array.isArray(stored.settings?.subjects)
+    ? stored.settings.subjects
+      .filter((subject) => typeof subject === "string")
+      .map((subject) => subject.trim().slice(0, MAX_SUBJECT_LENGTH))
+      .filter((subject, index, subjects) => subject && subjects.indexOf(subject) === index)
+      .slice(0, MAX_SUBJECTS)
+    : [];
+  const storedPeriodCount = Number(stored.settings?.periodCount);
   return {
     events,
     goals,
     quizzes: Array.isArray(stored.quizzes) ? stored.quizzes : [],
     pools: Array.isArray(stored.pools) ? stored.pools : [],
     tasks: Array.isArray(stored.tasks) ? stored.tasks : [],
+    settings: {
+      subjects: storedSubjects.length ? storedSubjects : [...DEFAULT_SUBJECTS],
+      periodCount: Number.isSafeInteger(storedPeriodCount) && storedPeriodCount >= 1 && storedPeriodCount <= MAX_PERIOD_COUNT
+        ? storedPeriodCount
+        : DEFAULT_PERIOD_COUNT,
+    },
   };
 }
 
@@ -430,12 +457,56 @@ function taskMeetsMinimum(task, amount) {
 
 function render() {
   elements.dateLabel.textContent = formatDate(today, { month: "long", day: "numeric", weekday: "short" });
+  renderSubjectOptions();
+  renderPeriodOptions();
   renderTasks();
   renderEvents();
   renderQuizzes();
   renderPools();
   renderSummary();
   renderPoolOptions();
+}
+
+function renderSubjectOptions() {
+  const options = `<option value="" selected disabled>科目を選択してください</option>${state.settings.subjects
+    .map((subject) => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
+    .join("")}`;
+  document.querySelectorAll('#quiz-form [name="subject"], #goal-form [name="subject"]').forEach((select) => {
+    const selected = select.value;
+    select.innerHTML = options;
+    if (state.settings.subjects.includes(selected)) select.value = selected;
+  });
+}
+
+function renderPeriodOptions(selectedValue) {
+  const select = document.querySelector('#quiz-form [name="period"]');
+  const selected = selectedValue ?? select.value;
+  const options = ['<option value="" selected disabled>校時を選択してください</option>'];
+  for (let period = 1; period <= state.settings.periodCount; period += 1) {
+    options.push(`<option value="${period}">${period}校時</option>`);
+  }
+  const selectedPeriod = Number(selected);
+  if (Number.isSafeInteger(selectedPeriod) && selectedPeriod > state.settings.periodCount) {
+    options.push(`<option value="${selectedPeriod}">${selectedPeriod}校時（登録済み）</option>`);
+  }
+  select.innerHTML = options.join("");
+  if (selected) select.value = String(selected);
+}
+
+function settingsSubjectRow(subject = "", originalSubject = "") {
+  return `<div class="settings-subject-row" data-original-subject="${escapeHtml(originalSubject)}">
+    <input type="text" name="subject" value="${escapeHtml(subject)}" maxlength="${MAX_SUBJECT_LENGTH}" aria-label="科目名" required />
+    <button class="text-button delete-button" type="button" data-remove-setting-subject aria-label="${subject ? `${escapeHtml(subject)}を削除` : "科目を削除"}">削除</button>
+  </div>`;
+}
+
+function renderSettingsForm() {
+  const form = elements.settingsDialog.querySelector("form");
+  form.elements.periodCount.value = state.settings.periodCount;
+  elements.settingsSubjects.innerHTML = state.settings.subjects
+    .map((subject) => settingsSubjectRow(subject, subject))
+    .join("");
+  form.querySelector("[data-add-setting-subject]").disabled = state.settings.subjects.length >= MAX_SUBJECTS;
 }
 
 function renderSummary() {
@@ -767,6 +838,7 @@ function openDialog(dialog) {
     form.elements.period.value = "";
     document.querySelector("#quiz-dialog-title").textContent = "予定を追加";
   }
+  if (dialog === elements.settingsDialog) renderSettingsForm();
   dialog.showModal();
 }
 
@@ -779,10 +851,11 @@ function openEditDialog(dialog, record, heading, submitLabel) {
   return form;
 }
 
-function setScheduleType(form, kind) {
+function setScheduleType(form, kind, selectedPeriod = form.elements.period.value) {
   form.elements.kind.value = kind;
   const isQuiz = kind === "quiz";
   const period = form.elements.period;
+  renderPeriodOptions(selectedPeriod);
   period.required = isQuiz;
   period.disabled = !isQuiz;
   document.querySelector("#period-field").hidden = !isQuiz;
@@ -840,9 +913,26 @@ document.addEventListener("click", (event) => {
     renderCalendar();
     return;
   }
+  const addSettingSubject = event.target.closest("[data-add-setting-subject]");
+  if (addSettingSubject) {
+    const rows = elements.settingsSubjects.querySelectorAll(".settings-subject-row");
+    if (rows.length >= MAX_SUBJECTS) return;
+    elements.settingsSubjects.insertAdjacentHTML("beforeend", settingsSubjectRow());
+    elements.settingsDialog.querySelector("[data-add-setting-subject]").disabled = rows.length + 1 >= MAX_SUBJECTS;
+    elements.settingsSubjects.querySelector(".settings-subject-row:last-child input").focus();
+    return;
+  }
+  const removeSettingSubject = event.target.closest("[data-remove-setting-subject]");
+  if (removeSettingSubject) {
+    removeSettingSubject.closest(".settings-subject-row").remove();
+    elements.settingsDialog.querySelector("[data-add-setting-subject]").disabled = false;
+    return;
+  }
   const openButton = event.target.closest("[data-open-dialog]");
   if (openButton) {
-    openDialog(document.getElementById(openButton.dataset.openDialog));
+    const dialog = document.getElementById(openButton.dataset.openDialog);
+    if (dialog === elements.settingsDialog && elements.menuDialog.open) elements.menuDialog.close();
+    openDialog(dialog);
     return;
   }
   if (event.target.closest("[data-close-dialog]")) {
@@ -881,7 +971,7 @@ document.addEventListener("click", (event) => {
     const item = state.quizzes.find((quiz) => quiz.id === editQuizButton.dataset.editQuiz);
     if (!item) return;
     const form = openEditDialog(elements.quizDialog, item, "予定を編集", "変更を保存");
-    setScheduleType(form, item.kind === "submission" ? "submission" : "quiz");
+    setScheduleType(form, item.kind === "submission" ? "submission" : "quiz", item.period ? String(item.period) : "");
     form.elements.title.value = item.title || "";
     form.elements.subject.value = item.subject;
     form.elements.date.value = item.date;
@@ -1028,6 +1118,47 @@ document.querySelectorAll(".quick-amounts").forEach((group) => {
   });
 });
 
+document.querySelector("#settings-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const rows = [...elements.settingsSubjects.querySelectorAll(".settings-subject-row")];
+  const subjects = rows.map((row) => row.querySelector('[name="subject"]').value.trim());
+  const periodCount = Number(form.elements.periodCount.value);
+  const uniqueSubjects = new Set(subjects.map((subject) => subject.toLocaleLowerCase()));
+  if (!Number.isSafeInteger(periodCount) || periodCount < 1 || periodCount > MAX_PERIOD_COUNT
+    || subjects.length < 1 || subjects.length > MAX_SUBJECTS
+    || subjects.some((subject) => !subject || subject.length > MAX_SUBJECT_LENGTH)
+    || uniqueSubjects.size !== subjects.length) {
+    showError(form, `科目は重複のない1〜${MAX_SUBJECTS}件、校時数は1〜${MAX_PERIOD_COUNT}で入力してください。`);
+    return;
+  }
+
+  const keptSubjects = new Set(rows.map((row) => row.dataset.originalSubject).filter(Boolean));
+  const removedSubjects = state.settings.subjects.filter((subject) => !keptSubjects.has(subject));
+  const subjectRecords = [...state.goals, ...state.quizzes, ...state.pools, ...state.tasks];
+  const usedSubjects = new Set(subjectRecords.map((record) => record.subject).filter(Boolean));
+  const inUse = removedSubjects.find((subject) => usedSubjects.has(subject));
+  if (inUse) {
+    showError(form, `「${inUse}」は計画や予定で使用中のため削除できません。先に名称を変更してください。`);
+    return;
+  }
+
+  const renamedSubjects = new Map(rows
+    .filter((row) => row.dataset.originalSubject)
+    .map((row) => [row.dataset.originalSubject, row.querySelector('[name="subject"]').value.trim()]));
+  const previousSettings = state.settings;
+  const previousRecordSubjects = subjectRecords.map((record) => record.subject);
+  state.settings = { subjects, periodCount };
+  subjectRecords.forEach((record) => {
+    if (renamedSubjects.has(record.subject)) record.subject = renamedSubjects.get(record.subject);
+  });
+  if (!saveStateAndClose(elements.settingsDialog, form)) {
+    state.settings = previousSettings;
+    subjectRecords.forEach((record, index) => { record.subject = previousRecordSubjects[index]; });
+  }
+});
+
 document.querySelector("#quiz-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -1041,8 +1172,11 @@ document.querySelector("#quiz-form").addEventListener("submit", (event) => {
   const unit = String(data.get("unit")).trim();
   const rawPeriod = String(data.get("period") || "");
   const period = rawPeriod ? Number(rawPeriod) : null;
-  if (!["quiz", "submission"].includes(kind) || !title || !SUBJECTS.includes(subject) || !date || !scope || (kind === "quiz" && (!Number.isInteger(period) || period < 1 || period > 5)) || (period !== null && (!Number.isInteger(period) || period < 1 || period > 5))) {
-    showError(form, "タイトル・範囲・科目・日付・校時を正しく入力してください。小テストは校時が必須です。");
+  const editingQuiz = state.quizzes.find((quiz) => quiz.id === form.dataset.editId);
+  const periodIsValid = period === null
+    || (Number.isSafeInteger(period) && period >= 1 && (period <= state.settings.periodCount || period === editingQuiz?.period));
+  if (!["quiz", "submission"].includes(kind) || !title || !state.settings.subjects.includes(subject) || !date || !scope || (kind === "quiz" && period === null) || !periodIsValid) {
+    showError(form, `タイトル・範囲・科目・日付を正しく入力してください。小テストは1〜${state.settings.periodCount}校時を指定してください。`);
     return;
   }
   const updatedQuiz = { id: form.dataset.editId || createId(), kind, title, subject, date, scope, unit, period };
@@ -1115,7 +1249,7 @@ document.querySelector("#goal-form").addEventListener("submit", (event) => {
     completed: 0,
     deadline: String(data.get("deadline") || ""),
   };
-  if (!parentEvent || !SUBJECTS.includes(goal.subject) || !goal.title || !goal.unit || !Number.isSafeInteger(goal.total) || goal.total < 1 || !Number.isSafeInteger(goal.laps) || goal.laps < 1) {
+  if (!parentEvent || !state.settings.subjects.includes(goal.subject) || !goal.title || !goal.unit || !Number.isSafeInteger(goal.total) || goal.total < 1 || !Number.isSafeInteger(goal.laps) || goal.laps < 1) {
     showError(form, "イベント・科目を選択し、教材名・単位・量を正しく入力してください。");
     return;
   }
