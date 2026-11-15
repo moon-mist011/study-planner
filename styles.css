@@ -87,6 +87,7 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .quiz-meta strong { color: var(--green); font-size: 12px; }
 .quiz-meta strong span { margin-left: 2px; font-size: 10px; font-weight: 500; }
 .goal-card, .pool-card { padding: 16px; }
+.goal-pool-action { display: flex; justify-content: flex-end; margin-top: 8px; }
 .card-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .card-title { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
 .card-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 10px; }

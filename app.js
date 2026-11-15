@@ -505,7 +505,16 @@ function formatDate(value, options = { month: "numeric", day: "numeric" }) {
 }
 
 function goalProgress(goal) {
-  return Math.min(goal.total * goal.laps, goal.completed);
+  const completed = Number(goal.completed);
+  return Math.min(goal.total * goal.laps, Number.isFinite(completed) ? Math.max(0, completed) : 0);
+}
+
+function canCreatePoolForGoal(goal) {
+  const total = Number(goal.total);
+  const laps = Number(goal.laps);
+  return Number.isSafeInteger(total) && total > 0
+    && Number.isSafeInteger(laps) && laps > 0
+    && goalProgress(goal) < total * laps;
 }
 
 function taskMeetsMinimum(task, amount) {
@@ -808,6 +817,7 @@ function renderGoalCard(goal) {
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
     <div class="progress-meta"><span>${completed} / ${total} ${escapeHtml(goal.unit)}</span><span>${percent}%</span></div>
+    ${canCreatePoolForGoal(goal) ? `<div class="goal-pool-action"><button class="text-button" type="button" data-add-pool="${escapeHtml(goal.id)}">＋ 週間プールに追加</button></div>` : ""}
   </article>`;
 }
 
@@ -990,13 +1000,12 @@ function renderPools() {
 
 function renderPoolOptions() {
   const select = elements.poolDialog.querySelector('[name="goalId"]');
-  const activeGoals = state.goals.filter((goal) => goal.completed < goal.total * goal.laps);
-  select.innerHTML = activeGoals.length
-    ? activeGoals.map((goal) => {
+  const activeGoals = state.goals.filter(canCreatePoolForGoal);
+  select.innerHTML = `<option value="" disabled selected>${activeGoals.length ? "長期目標を選択してください" : "選択できる未完了の長期目標がありません"}</option>${activeGoals
+    .map((goal) => {
       const event = state.events.find((item) => item.id === goal.eventId);
       return `<option value="${escapeHtml(goal.id)}">${escapeHtml(event?.title || "イベント未設定")} — ${escapeHtml(goal.subject || "科目未設定")} / ${escapeHtml(goal.title)}</option>`;
-    }).join("")
-    : `<option value="">先にイベント内に長期計画を追加してください</option>`;
+    }).join("")}`;
   elements.poolDialog.querySelector('[type="submit"]').disabled = activeGoals.length === 0;
 }
 
@@ -1293,6 +1302,14 @@ document.addEventListener("click", (event) => {
     form.elements.submissionDate.value = item.submissionDate || "";
     const parentEvent = state.events.find((eventItem) => eventItem.id === item.eventId);
     document.querySelector("#goal-event-title").textContent = `${parentEvent?.title || "イベント未設定"} の長期計画`;
+    return;
+  }
+  const addPoolButton = event.target.closest("[data-add-pool]");
+  if (addPoolButton) {
+    const goal = state.goals.find((item) => item.id === addPoolButton.dataset.addPool);
+    if (!goal || !canCreatePoolForGoal(goal)) return;
+    openDialog(elements.poolDialog);
+    elements.poolDialog.querySelector('[name="goalId"]').value = goal.id;
     return;
   }
   const editQuizButton = event.target.closest("[data-edit-quiz]");
@@ -1632,7 +1649,7 @@ document.querySelector("#pool-form").addEventListener("submit", (event) => {
     showError(form, "編集する週間プールが見つかりません。");
     return;
   }
-  if (!form.dataset.editId && (!goal || goal.completed >= goal.total * goal.laps)) {
+  if (!form.dataset.editId && (!goal || !canCreatePoolForGoal(goal))) {
     showError(form, "有効な長期目標を選択してください。");
     return;
   }
