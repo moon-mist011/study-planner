@@ -399,7 +399,8 @@ async function loadUserState(user) {
   if (generation !== authLoadGeneration) return;
   setAuthenticatedView(true);
   setAuthMessage("同期済み");
-  render();
+  if (moveDueSchedulesToPools()) saveState();
+  else render();
 }
 
 async function initializeAuth() {
@@ -697,13 +698,13 @@ function renderSummary() {
 
 function renderTasks() {
   const visibleTasks = state.tasks
-    .filter((task) => task.date === today || (task.date < today && !task.completed))
+    .filter((task) => !task.completed && (task.date === today || task.date < today))
     .sort((a, b) => {
       if ((a.date === today) !== (b.date === today)) return a.date === today ? -1 : 1;
       return b.date.localeCompare(a.date);
     });
   const pastTasks = state.tasks
-    .filter((task) => task.date < today && task.completed)
+    .filter((task) => task.completed)
     .sort((a, b) => b.date.localeCompare(a.date));
   elements.tasksEmpty.hidden = visibleTasks.length > 0;
   elements.tasks.innerHTML = visibleTasks.map((task) => renderTaskCard(task)).join("");
@@ -764,10 +765,73 @@ function scheduleEventRefresh() {
       selectedCalendarDate = currentDate;
       calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     }
-    render();
+    if (moveDueSchedulesToPools()) saveState();
+    else render();
     renderCalendar();
     scheduleEventRefresh();
   }, nextDay.getTime() - now.getTime() + 50);
+}
+
+function getSchedulePoolStart(dueDate) {
+  const [year, month, day] = dueDate.split("-").map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return shiftDate(dueDate, weekday <= 2 ? -(weekday + 7) : -weekday);
+}
+
+function findSchedulePool(schedule) {
+  return state.pools.find((pool) => schedule.sourceGoalId
+    ? pool.sourceGoalId === schedule.sourceGoalId
+    : pool.sourceQuizId === schedule.id);
+}
+
+function isScheduleComplete(schedule) {
+  if (schedule.sourceGoalId) {
+    const goal = state.goals.find((item) => item.id === schedule.sourceGoalId);
+    if (goal && goalProgress(goal) >= goal.total * goal.laps) return true;
+  }
+  const pool = findSchedulePool(schedule);
+  return state.tasks.some((task) => task.completed
+    && (schedule.sourceGoalId
+      ? task.poolId === pool?.id
+      : task.quizId === schedule.id || task.poolId === pool?.id));
+}
+
+function createSchedulePool(schedule) {
+  if (findSchedulePool(schedule)) return false;
+  const goal = schedule.sourceGoalId
+    ? state.goals.find((item) => item.id === schedule.sourceGoalId)
+    : null;
+  const start = getSchedulePoolStart(schedule.date);
+  const title = schedule.title || (schedule.kind === "submission" ? "提出物" : "小テスト");
+  state.pools.push({
+    id: createId(),
+    ...(schedule.sourceGoalId ? { sourceGoalId: schedule.sourceGoalId } : { sourceQuizId: schedule.id }),
+    eventId: schedule.eventId || goal?.eventId || "",
+    goalId: goal?.id || "",
+    goalTitle: goal?.title || "小テスト・提出物予定",
+    title,
+    subject: schedule.subject || goal?.subject || "",
+    unit: goal?.unit || (schedule.kind === "submission" ? (schedule.unit || "件") : "回"),
+    scope: schedule.scope || "",
+    scopeUnit: schedule.unit || "",
+    deadline: schedule.date,
+    start,
+    end: shiftDate(start, 6),
+    target: goal ? Math.max(1, goal.total * goal.laps - goalProgress(goal)) : 1,
+    completed: 0,
+    status: "active",
+  });
+  return true;
+}
+
+function moveDueSchedulesToPools() {
+  let changed = false;
+  getScheduledQuizzes().forEach((schedule) => {
+    if (today < getSchedulePoolStart(schedule.date) || findSchedulePool(schedule)) return;
+    if (isScheduleComplete(schedule)) return;
+    changed = createSchedulePool(schedule) || changed;
+  });
+  return changed;
 }
 
 function renderEventCard(event) {
@@ -835,13 +899,19 @@ function renderQuizzes() {
   elements.quizzesEmpty.hidden = quizzes.length > 0;
   elements.quizzes.innerHTML = quizzes.map((quiz) => {
     const event = state.events.find((item) => item.id === quiz.eventId);
+    const matchingPool = findSchedulePool(quiz);
+    const completedTask = isScheduleComplete(quiz);
+    const poolButton = matchingPool || completedTask
+      ? ""
+      : `<button class="text-button" type="button" data-add-schedule-pool="${escapeHtml(quiz.sourceGoalId || quiz.id)}" data-schedule-source="${quiz.sourceGoalId ? "goal" : "quiz"}">週間プールへ</button>`;
     const actions = quiz.sourceGoalId
-      ? `<button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(quiz.sourceGoalId)}" aria-label="長期計画を編集" title="編集">✏️</button>`
+      ? `${poolButton}<button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(quiz.sourceGoalId)}" aria-label="長期計画を編集" title="編集">✏️</button>`
       : `<button class="text-button icon-action" type="button" data-edit-quiz="${escapeHtml(quiz.id)}" aria-label="予定を編集" title="編集">✏️</button>
+         ${poolButton}
          <button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}"${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? " disabled" : ""}>${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? "ToDo作成済み" : "今日のToDoへ"}</button>
          <button class="text-button icon-action" type="button" data-duplicate-quiz="${escapeHtml(quiz.id)}" aria-label="予定を複製" title="複製">📑</button>
          <button class="text-button icon-action delete-button" type="button" data-delete-quiz="${escapeHtml(quiz.id)}" aria-label="予定を削除" title="削除">🗑️</button>`;
-    return `<article class="quiz-card">
+    return `<article class="quiz-card${completedTask ? " completed" : ""}">
       <div class="quiz-info">
         <p class="card-title">${escapeHtml(quiz.title || "小テスト・提出物")}</p>
         <p class="card-subtitle">${escapeHtml(quiz.scope || (quiz.sourceGoalId ? "長期計画の提出日" : "範囲未設定"))}${quiz.unit ? ` ${escapeHtml(quiz.unit)}` : ""}</p>
@@ -979,8 +1049,12 @@ function renderPools() {
       ? `<button class="text-button" type="button" data-add-task="${escapeHtml(pool.id)}">＋ 今日のToDoへ</button>
          <button class="text-button" type="button" data-carry-pool="${escapeHtml(pool.id)}"${remaining === 0 ? " disabled" : ""}>残りを繰り越す</button>`
       : `<span class="badge">終了</span>`;
+    const poolDescription = pool.scope
+      ? `${escapeHtml(pool.scope)}${pool.scopeUnit ? ` ${escapeHtml(pool.scopeUnit)}` : ""}`
+      : `${escapeHtml(pool.goalTitle || "長期計画")}から`;
+    const deadline = pool.deadline ? ` ・ 提出 ${formatDate(pool.deadline)}` : "";
     return `<article class="pool-card">
-      <div class="card-top"><div><p class="card-title">${escapeHtml(pool.title)}</p><p class="card-subtitle">${escapeHtml(pool.subject || "科目未設定")} ・ ${escapeHtml(pool.goalTitle)}から</p></div>
+      <div class="card-top"><div><p class="card-title">${escapeHtml(pool.title)}</p><p class="card-subtitle">${escapeHtml(pool.subject || "科目未設定")} ・ ${poolDescription}${deadline}</p></div>
         <span class="badge${remaining === 0 ? " complete" : ""}">${remaining === 0 ? "達成" : `残り ${remaining} ${escapeHtml(pool.unit)}`}</span>
       </div>
       <div class="progress-track" role="progressbar" aria-label="${escapeHtml(pool.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
@@ -1047,9 +1121,11 @@ function deleteGoal(goalId) {
 function deleteQuiz(quizId) {
   const quiz = state.quizzes.find((item) => item.id === quizId);
   if (!quiz) return;
-  if (!window.confirm(`「${quiz.title || "小テスト・提出物"}」と、そこから作成した今日のToDoを削除します。この操作は取り消せません。`)) return;
+  if (!window.confirm(`「${quiz.title || "小テスト・提出物"}」と、そこから作成した週間プール・今日のToDoを削除します。この操作は取り消せません。`)) return;
+  const poolIds = new Set(state.pools.filter((pool) => pool.sourceQuizId === quizId).map((pool) => pool.id));
   state.quizzes = state.quizzes.filter((item) => item.id !== quizId);
-  state.tasks = state.tasks.filter((task) => task.quizId !== quizId);
+  state.pools = state.pools.filter((pool) => !poolIds.has(pool.id));
+  state.tasks = state.tasks.filter((task) => task.quizId !== quizId && !poolIds.has(task.poolId));
   saveState();
 }
 
@@ -1325,6 +1401,7 @@ document.addEventListener("click", (event) => {
     if (!item) return;
     const form = openEditDialog(elements.poolDialog, item, "週間プールを編集", "変更を保存");
     form.querySelector('[type="submit"]').disabled = false;
+    form.elements.goalId.value = item.goalId || "";
     form.elements.goalId.disabled = true;
     form.elements.goalId.required = false;
     form.elements.target.value = item.target;
@@ -1381,6 +1458,17 @@ document.addEventListener("click", (event) => {
       completed: false,
     });
     saveState();
+    return;
+  }
+  const addSchedulePoolButton = event.target.closest("[data-add-schedule-pool]");
+  if (addSchedulePoolButton) {
+    const sourceId = addSchedulePoolButton.dataset.addSchedulePool;
+    const schedule = getScheduledQuizzes().find((item) => addSchedulePoolButton.dataset.scheduleSource === "goal"
+      ? item.sourceGoalId === sourceId
+      : item.id === sourceId);
+    if (!schedule) return;
+    if (isScheduleComplete(schedule)) return;
+    if (createSchedulePool(schedule)) saveState();
     return;
   }
   const duplicateQuizButton = event.target.closest("[data-duplicate-quiz]");
@@ -1530,6 +1618,20 @@ document.querySelector("#quiz-form").addEventListener("submit", (event) => {
       return;
     }
     state.quizzes[index] = updatedQuiz;
+    const schedulePool = state.pools.find((pool) => pool.sourceQuizId === updatedQuiz.id);
+    if (schedulePool) {
+      const start = getSchedulePoolStart(updatedQuiz.date);
+      Object.assign(schedulePool, {
+        title: updatedQuiz.title,
+        subject: updatedQuiz.subject,
+        scope: updatedQuiz.scope,
+        scopeUnit: updatedQuiz.unit,
+        unit: updatedQuiz.kind === "submission" ? (updatedQuiz.unit || "件") : "回",
+        deadline: updatedQuiz.date,
+        start,
+        end: shiftDate(start, 6),
+      });
+    }
     state.tasks.filter((task) => task.quizId === updatedQuiz.id).forEach((task) => {
       task.title = title;
       task.subject = subject;
@@ -1540,6 +1642,7 @@ document.querySelector("#quiz-form").addEventListener("submit", (event) => {
   } else {
     state.quizzes.push(updatedQuiz);
   }
+  moveDueSchedulesToPools();
   saveStateAndClose(elements.quizDialog, form);
 });
 
@@ -1625,9 +1728,17 @@ document.querySelector("#goal-form").addEventListener("submit", (event) => {
       pool.subject = goal.subject;
       pool.unit = goal.unit;
     });
+    const submissionPool = state.pools.find((pool) => pool.sourceGoalId === goal.id);
+    if (submissionPool && goal.submissionDate) {
+      const start = getSchedulePoolStart(goal.submissionDate);
+      submissionPool.deadline = goal.submissionDate;
+      submissionPool.start = start;
+      submissionPool.end = shiftDate(start, 6);
+    }
   } else {
     state.goals.push(goal);
   }
+  moveDueSchedulesToPools();
   saveStateAndClose(elements.goalDialog, form);
 });
 
@@ -1684,7 +1795,11 @@ document.querySelector("#task-form").addEventListener("submit", (event) => {
   if (editingTask) {
     editingTask.minimum = minimum;
   } else {
-    state.tasks.push({ id: createId(), poolId: pool.id, title: pool.title, subject: pool.subject, unit: pool.unit, minimum, date: today, completed: false });
+    state.tasks.push({
+      id: createId(), poolId: pool.id, ...(pool.sourceQuizId ? { quizId: pool.sourceQuizId } : {}),
+      title: pool.title, subject: pool.subject, unit: pool.unit,
+      scope: pool.scope || "", scopeUnit: pool.scopeUnit || "", minimum, date: today, completed: false,
+    });
   }
   saveStateAndClose(elements.taskDialog, form);
 });
