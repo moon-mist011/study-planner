@@ -1201,7 +1201,15 @@ document.querySelector("#quiz-form").addEventListener("submit", (event) => {
   saveStateAndClose(elements.quizDialog, form);
 });
 
-document.querySelector("#event-form").addEventListener("submit", (event) => {
+const eventForm = document.querySelector("#event-form");
+eventForm.elements.start.addEventListener("input", () => {
+  const { start, end } = eventForm.elements;
+  if (start.value && (!end.value || end.value <= start.value)) {
+    end.value = shiftDate(start.value, 1);
+  }
+});
+
+eventForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   if (!form.reportValidity()) return;
