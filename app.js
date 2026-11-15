@@ -44,6 +44,7 @@ const elements = {
   poolDialog: document.querySelector("#pool-dialog"),
   taskDialog: document.querySelector("#task-dialog"),
   completeDialog: document.querySelector("#complete-dialog"),
+  studyLogDialog: document.querySelector("#study-log-dialog"),
   settingsDialog: document.querySelector("#settings-dialog"),
   settingsSubjects: document.querySelector("#settings-subject-list"),
   menuDialog: document.querySelector("#menu-dialog"),
@@ -161,6 +162,12 @@ function normalizeState(stored) {
   tasks.forEach((task) => {
     const seconds = Number(task.studySeconds);
     task.studySeconds = Number.isSafeInteger(seconds) && seconds > 0 ? seconds : 0;
+    task.studyLogs = (Array.isArray(task.studyLogs) ? task.studyLogs : [])
+      .filter((log) => log && typeof log.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(log.date)
+        && Number.isSafeInteger(Number(log.seconds)) && Number(log.seconds) >= 0
+        && Number.isSafeInteger(Number(log.amount)) && Number(log.amount) >= 0
+        && (Number(log.seconds) > 0 || Number(log.amount) > 0))
+      .map((log) => ({ date: log.date, seconds: Number(log.seconds), amount: Number(log.amount) }));
   });
   const storedTimer = stored.studyTimer;
   const studyTimer = storedTimer && typeof storedTimer.taskId === "string"
@@ -551,13 +558,24 @@ function getTaskStudySeconds(task) {
   const activeSeconds = state.studyTimer?.taskId === task.id && state.studyTimer.startedAt
     ? Math.max(0, Math.floor((Date.now() - state.studyTimer.startedAt) / 1000))
     : 0;
-  return (task.studySeconds || 0) + activeSeconds;
+  const loggedSeconds = (task.studyLogs || []).reduce((total, log) => total + log.seconds, 0);
+  return (task.studySeconds || 0) + loggedSeconds + activeSeconds;
+}
+
+function getTaskStudySecondsOnDate(task, date) {
+  const taskDateSeconds = task.date === date ? (task.studySeconds || 0) : 0;
+  const activeSeconds = task.date === date && state.studyTimer?.taskId === task.id && state.studyTimer.startedAt
+    ? Math.max(0, Math.floor((Date.now() - state.studyTimer.startedAt) / 1000))
+    : 0;
+  const loggedSeconds = (task.studyLogs || [])
+    .filter((log) => log.date === date)
+    .reduce((total, log) => total + log.seconds, 0);
+  return taskDateSeconds + activeSeconds + loggedSeconds;
 }
 
 function getStudySecondsForDate(date) {
   return state.tasks
-    .filter((task) => task.date === date)
-    .reduce((total, task) => total + getTaskStudySeconds(task), 0);
+    .reduce((total, task) => total + getTaskStudySecondsOnDate(task, date), 0);
 }
 
 function studyHeatLevel(seconds) {
@@ -732,7 +750,7 @@ function renderTaskCard(task) {
   const details = task.scope ? ` ・ 範囲: ${escapeHtml(task.scope)}${task.scopeUnit ? ` ${escapeHtml(task.scopeUnit)}` : ""}` : "";
   return `<article class="task-card${task.completed ? " done" : ""}${isPast && !task.completed ? " past-uncompleted" : ""}">
     <div class="task-main"><p class="card-title">${escapeHtml(title)}</p>
-        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(task.studySeconds || 0)}${details}</p>
+        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(getTaskStudySeconds(task))}${details}</p>
     </div>
       <div class="task-actions"><button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
   </article>`;
@@ -1022,19 +1040,32 @@ function renderCalendarAgenda() {
     return `<article class="agenda-item agenda-quiz"><span class="agenda-kind">${kind}</span><p>${escapeHtml(quiz.subject)}${period} ・ ${escapeHtml(quiz.title || kind)} ・ ${scope}${event ? ` ・ ${escapeHtml(event.title)}` : ""}</p></article>`;
   }).join("");
   const studyTasks = state.tasks
-    .filter((task) => task.date === date)
-    .map((task) => ({ task, seconds: getTaskStudySeconds(task) }))
-    .filter(({ task, seconds }) => seconds > 0 || task.actual > 0)
+    .map((task) => {
+      const logs = task.studyLogs || [];
+      const amountFromLogs = logs.reduce((total, log) => total + log.amount, 0);
+      const amountOnDate = logs
+        .filter((log) => log.date === date)
+        .reduce((total, log) => total + log.amount, 0);
+      const legacyAmount = task.date === date
+        ? Math.max(0, Number(task.actual || 0) - amountFromLogs)
+        : 0;
+      return {
+        task,
+        seconds: getTaskStudySecondsOnDate(task, date),
+        amount: legacyAmount + amountOnDate,
+      };
+    })
+    .filter(({ seconds, amount }) => seconds > 0 || amount > 0)
     .sort((a, b) => b.seconds - a.seconds || a.task.title.localeCompare(b.task.title));
   const totalSeconds = getStudySecondsForDate(date);
   elements.calendarStudyTotal.textContent = `合計 ${formatDuration(totalSeconds)}`;
   elements.calendarStudyEmpty.hidden = studyTasks.length > 0;
-  elements.calendarStudyList.innerHTML = studyTasks.map(({ task, seconds }) => {
+  elements.calendarStudyList.innerHTML = studyTasks.map(({ task, seconds, amount }) => {
     const pool = state.pools.find((item) => item.id === task.poolId);
     const title = pool?.title || task.title;
     const subject = pool?.subject || task.subject || "科目未設定";
-    const amount = task.actual > 0 ? `実績 ${task.actual} ${pool?.unit || task.unit || ""}` : "実績なし";
-    return `<article class="calendar-study-item"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subject)} ・ ${amount}</span></div><time>${formatDuration(seconds)}</time></article>`;
+    const recordedAmount = amount > 0 ? `実績 ${amount} ${pool?.unit || task.unit || ""}` : "実績なし";
+    return `<article class="calendar-study-item"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subject)} ・ ${escapeHtml(recordedAmount)}</span></div><time>${formatDuration(seconds)}</time></article>`;
   }).join("");
 }
 
@@ -1152,6 +1183,24 @@ function openDialog(dialog) {
     document.querySelector("#task-record-actions").hidden = false;
     document.querySelector("#task-outcome").hidden = true;
   }
+  if (dialog === elements.studyLogDialog) {
+    const taskSelect = form.elements.taskId;
+    const studyTasks = [...state.tasks].sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+    taskSelect.innerHTML = `<option value="" selected disabled>${studyTasks.length ? "タスクを選択してください" : "記録できるタスクがありません"}</option>${studyTasks
+      .map((task) => {
+        const pool = state.pools.find((item) => item.id === task.poolId);
+        const title = pool?.title || task.title;
+        const subject = pool?.subject || task.subject || "科目未設定";
+        const date = formatDate(task.date, { month: "numeric", day: "numeric" });
+        const status = task.completed ? "完了" : "未完了";
+        return `<option value="${escapeHtml(task.id)}">${escapeHtml(`${date} ・ ${subject} ・ ${title} ・ ${status}`)}</option>`;
+      }).join("")}`;
+    form.elements.minutes.value = "0";
+    form.elements.amount.value = "0";
+    document.querySelector("#study-log-date").textContent = `${formatDate(selectedCalendarDate, { year: "numeric", month: "long", day: "numeric" })}の記録`;
+    document.querySelector("#study-log-unit").textContent = "タスクの単位に合わせて入力してください。";
+    form.querySelector('[type="submit"]').disabled = studyTasks.length === 0;
+  }
   if (dialog === elements.poolDialog) {
     form.elements.goalId.disabled = false;
     form.elements.goalId.required = true;
@@ -1199,6 +1248,11 @@ function setScheduleType(form, kind, selectedPeriod = form.elements.period.value
 }
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest(".brand")) {
+    event.preventDefault();
+    window.location.reload();
+    return;
+  }
   if (event.target.closest(".menu-button")) {
     elements.menuDialog.showModal();
     return;
@@ -1316,6 +1370,10 @@ document.addEventListener("click", (event) => {
   if (calendarDay) {
     selectedCalendarDate = calendarDay.dataset.calendarDate;
     renderCalendar();
+    return;
+  }
+  if (event.target.closest("[data-add-study-log]")) {
+    openDialog(elements.studyLogDialog);
     return;
   }
   const addSettingSubject = event.target.closest("[data-add-setting-subject]");
@@ -1545,6 +1603,15 @@ document.querySelectorAll(".quick-amounts").forEach((group) => {
     input.value = Math.max(0, Number(input.value || 0) + Number(button.dataset.add));
     input.focus();
   });
+});
+
+document.querySelector("#study-log-form").elements.taskId.addEventListener("change", (event) => {
+  const task = state.tasks.find((item) => item.id === event.currentTarget.value);
+  const pool = task && state.pools.find((item) => item.id === task.poolId);
+  const unit = pool?.unit || task?.unit;
+  document.querySelector("#study-log-unit").textContent = unit
+    ? `実施量の単位: ${unit}`
+    : "タスクの単位に合わせて入力してください。";
 });
 
 document.querySelector("#settings-form").addEventListener("submit", (event) => {
@@ -1834,16 +1901,40 @@ document.querySelector("#complete-form").addEventListener("submit", (event) => {
   document.querySelector("#task-outcome").hidden = false;
 });
 
-function commitTaskRecord(taskId, amount, complete) {
-  const task = state.tasks.find((item) => item.id === taskId);
-  if (!task || task.completed) return;
+document.querySelector("#study-log-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const task = state.tasks.find((item) => item.id === form.elements.taskId.value);
+  const minutes = Number(form.elements.minutes.value);
+  const amount = Number(form.elements.amount.value);
+  const seconds = minutes * 60;
+  if (!task || !Number.isSafeInteger(minutes) || minutes < 0
+    || !Number.isSafeInteger(seconds) || !Number.isSafeInteger(amount) || amount < 0
+    || (minutes === 0 && amount === 0)) {
+    showError(form, "タスクを選択し、勉強時間または実施量を1以上入力してください。");
+    return;
+  }
+  task.studyLogs ||= [];
+  task.studyLogs.push({ date: selectedCalendarDate, seconds, amount });
+  if (amount > 0) addTaskActual(task, amount);
+  saveStateAndClose(elements.studyLogDialog, form);
+});
+
+function addTaskActual(task, amount) {
   task.actual = (task.actual || 0) + amount;
-  task.completed = complete;
   const pool = state.pools.find((item) => item.id === task.poolId);
   if (!pool) return;
   pool.completed += amount;
   const goal = state.goals.find((item) => item.id === pool.goalId);
   if (goal) goal.completed = Math.min(goal.total * goal.laps, goal.completed + amount);
+}
+
+function commitTaskRecord(taskId, amount, complete) {
+  const task = state.tasks.find((item) => item.id === taskId);
+  if (!task || task.completed) return;
+  addTaskActual(task, amount);
+  task.completed = complete;
 }
 
 elements.completeDialog.addEventListener("close", () => {

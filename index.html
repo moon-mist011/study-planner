@@ -202,7 +202,10 @@
             <div class="calendar-agenda-list" id="calendar-agenda-list"></div>
             <p class="muted-empty" id="calendar-agenda-empty">この日の予定はありません。</p>
             <section class="calendar-study-agenda" aria-labelledby="calendar-study-title">
-              <h3 id="calendar-study-title">勉強時間</h3>
+              <div class="calendar-study-heading">
+                <h3 id="calendar-study-title">勉強時間</h3>
+                <button class="button button-secondary button-small" type="button" data-add-study-log>記録を追加</button>
+              </div>
               <p id="calendar-study-total" class="calendar-study-total"></p>
               <div id="calendar-study-list" class="calendar-study-list"></div>
               <p id="calendar-study-empty" class="muted-empty">この日の勉強記録はありません。</p>
@@ -358,6 +361,26 @@
         </div>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions" id="task-record-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">実績を記録</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="study-log-dialog" class="modal">
+      <form id="study-log-form">
+        <div class="modal-heading">
+          <div><p class="eyebrow">STUDY RECORD</p><h2>勉強記録を追加</h2></div>
+          <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
+        </div>
+        <p class="modal-description" id="study-log-date"></p>
+        <label>取り組んだタスク
+          <select name="taskId" required></select>
+        </label>
+        <div class="form-row">
+          <label>勉強時間（分）<input name="minutes" type="number" min="0" step="1" value="0" required /></label>
+          <label>実施量<input name="amount" type="number" min="0" step="1" value="0" required /></label>
+        </div>
+        <p class="form-hint" id="study-log-unit">タスクの単位に合わせて入力してください。</p>
+        <p class="form-error" aria-live="polite"></p>
+        <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">記録を追加</button></div>
       </form>
     </dialog>
 
