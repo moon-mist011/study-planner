@@ -96,6 +96,7 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .date-range { color: #87948c; font-size: 10px; }
 .pool-actions { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
 .text-button { padding: 5px 8px; border: 0; color: var(--green); background: transparent; font-size: 10px; font-weight: 600; }
+.delete-button { color: #b84d42; }
 .text-button:hover, .text-link:hover { text-decoration: underline; }
 .text-button:disabled { color: #b0b9b3; cursor: default; text-decoration: none; }
 .task-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; }

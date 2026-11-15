@@ -123,7 +123,10 @@ function readLocalState(key) {
 }
 
 function saveState() {
-  if (!currentUser || !firestoreStateRef) return false;
+  if (!currentUser || !firestoreStateRef) {
+    console.error("ログイン状態を確認できないため、データを保存できません。");
+    return false;
+  }
   const updatedAt = Date.now();
   try {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${currentUser.uid}`, JSON.stringify(state));
@@ -502,7 +505,7 @@ function renderEventCard(event) {
       <div class="card-top"><div><p class="card-title">${escapeHtml(event.title)}</p><p class="card-subtitle">${eventDates}</p></div>
         <span class="badge">${typeLabel}</span>
       </div>
-      <div class="event-actions"><button class="text-button" type="button" data-edit-event="${escapeHtml(event.id)}">編集</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
+      <div class="event-actions"><button class="text-button" type="button" data-edit-event="${escapeHtml(event.id)}">編集</button><button class="text-button delete-button" type="button" data-delete-event="${escapeHtml(event.id)}">削除</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
     </div>
     <div class="event-goals">${eventGoals.length
       ? eventGoals.map((goal) => renderGoalCard(goal)).join("")
@@ -520,7 +523,7 @@ function renderGoalCard(goal) {
   const deadline = goal.deadline ? `期限 ${formatDate(goal.deadline)}` : "期限なし";
   return `<article class="goal-card">
     <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}</p></div>
-      <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button" type="button" data-edit-goal="${escapeHtml(goal.id)}">編集</button></div>
+      <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button" type="button" data-edit-goal="${escapeHtml(goal.id)}">編集</button><button class="text-button delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}">削除</button></div>
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
     <div class="progress-meta"><span>${completed} / ${total} ${escapeHtml(goal.unit)}</span><span>${percent}%</span></div>
@@ -540,6 +543,7 @@ function renderQuizzes() {
       <button class="text-button" type="button" data-edit-quiz="${escapeHtml(quiz.id)}">編集</button>
       <button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}"${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? " disabled" : ""}>${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? "ToDo作成済み" : "今日のToDoへ"}</button>
       <button class="text-button" type="button" data-duplicate-quiz="${escapeHtml(quiz.id)}">複製</button>
+      <button class="text-button delete-button" type="button" data-delete-quiz="${escapeHtml(quiz.id)}">削除</button>
     </div>
   </article>`).join("");
 }
@@ -634,6 +638,48 @@ function showError(form, message) {
   const element = form.querySelector(".form-error");
   element.textContent = message;
   element.classList.toggle("visible", Boolean(message));
+}
+
+function saveStateAndClose(dialog, form) {
+  if (!saveState()) {
+    showError(form, "ログイン状態を確認できません。再読み込みしてから、もう一度お試しください。");
+    return false;
+  }
+  dialog.close();
+  return true;
+}
+
+function deleteEvent(eventId) {
+  const event = state.events.find((item) => item.id === eventId);
+  if (!event) return;
+  const goalIds = new Set(state.goals.filter((goal) => goal.eventId === eventId).map((goal) => goal.id));
+  const poolIds = new Set(state.pools.filter((pool) => pool.eventId === eventId || goalIds.has(pool.goalId)).map((pool) => pool.id));
+  if (!window.confirm(`「${event.title}」と、その長期計画・週間プール・関連する今日のToDoを削除します。この操作は取り消せません。`)) return;
+  state.events = state.events.filter((item) => item.id !== eventId);
+  state.goals = state.goals.filter((goal) => !goalIds.has(goal.id));
+  state.pools = state.pools.filter((pool) => !poolIds.has(pool.id));
+  state.tasks = state.tasks.filter((task) => !poolIds.has(task.poolId));
+  saveState();
+}
+
+function deleteGoal(goalId) {
+  const goal = state.goals.find((item) => item.id === goalId);
+  if (!goal) return;
+  const poolIds = new Set(state.pools.filter((pool) => pool.goalId === goalId).map((pool) => pool.id));
+  if (!window.confirm(`「${goal.title}」と、その週間プール・関連する今日のToDoを削除します。この操作は取り消せません。`)) return;
+  state.goals = state.goals.filter((item) => item.id !== goalId);
+  state.pools = state.pools.filter((pool) => !poolIds.has(pool.id));
+  state.tasks = state.tasks.filter((task) => !poolIds.has(task.poolId));
+  saveState();
+}
+
+function deleteQuiz(quizId) {
+  const quiz = state.quizzes.find((item) => item.id === quizId);
+  if (!quiz) return;
+  if (!window.confirm(`「${quiz.title || "小テスト・提出物"}」と、そこから作成した今日のToDoを削除します。この操作は取り消せません。`)) return;
+  state.quizzes = state.quizzes.filter((item) => item.id !== quizId);
+  state.tasks = state.tasks.filter((task) => task.quizId !== quizId);
+  saveState();
 }
 
 function openDialog(dialog) {
@@ -812,6 +858,21 @@ document.addEventListener("click", (event) => {
     document.querySelector("#task-pool-title").textContent = pool ? `${pool.title}（${pool.unit}）` : item.title;
     return;
   }
+  const deleteEventButton = event.target.closest("[data-delete-event]");
+  if (deleteEventButton) {
+    deleteEvent(deleteEventButton.dataset.deleteEvent);
+    return;
+  }
+  const deleteGoalButton = event.target.closest("[data-delete-goal]");
+  if (deleteGoalButton) {
+    deleteGoal(deleteGoalButton.dataset.deleteGoal);
+    return;
+  }
+  const deleteQuizButton = event.target.closest("[data-delete-quiz]");
+  if (deleteQuizButton) {
+    deleteQuiz(deleteQuizButton.dataset.deleteQuiz);
+    return;
+  }
   const scheduleTypeButton = event.target.closest("[data-schedule-type]");
   if (scheduleTypeButton) {
     setScheduleType(scheduleTypeButton.closest("form"), scheduleTypeButton.dataset.scheduleType);
@@ -893,7 +954,8 @@ document.addEventListener("click", (event) => {
     if (!pendingTaskRecord) return;
     commitTaskRecord(pendingTaskRecord.taskId, pendingTaskRecord.amount, outcomeButton.dataset.taskOutcome === "complete");
     pendingTaskRecord = null;
-    if (saveState()) elements.completeDialog.close();
+    const form = elements.completeDialog.querySelector("form");
+    saveStateAndClose(elements.completeDialog, form);
     return;
   }
   const carryButton = event.target.closest("[data-carry-pool]");
@@ -945,7 +1007,7 @@ document.querySelector("#quiz-form").addEventListener("submit", (event) => {
   } else {
     state.quizzes.push(updatedQuiz);
   }
-  if (saveState()) elements.quizDialog.close();
+  saveStateAndClose(elements.quizDialog, form);
 });
 
 document.querySelector("#event-form").addEventListener("submit", (event) => {
@@ -977,7 +1039,7 @@ document.querySelector("#event-form").addEventListener("submit", (event) => {
   } else {
     state.events.push(updatedEvent);
   }
-  if (saveState()) elements.eventDialog.close();
+  saveStateAndClose(elements.eventDialog, form);
 });
 
 document.querySelector("#goal-form").addEventListener("submit", (event) => {
@@ -1018,7 +1080,7 @@ document.querySelector("#goal-form").addEventListener("submit", (event) => {
   } else {
     state.goals.push(goal);
   }
-  if (saveState()) elements.goalDialog.close();
+  saveStateAndClose(elements.goalDialog, form);
 });
 
 document.querySelector("#pool-form").addEventListener("submit", (event) => {
@@ -1055,7 +1117,7 @@ document.querySelector("#pool-form").addEventListener("submit", (event) => {
       unit: goal.unit, start, end, target, completed: 0, status: "active",
     });
   }
-  if (saveState()) elements.poolDialog.close();
+  saveStateAndClose(elements.poolDialog, form);
 });
 
 document.querySelector("#task-form").addEventListener("submit", (event) => {
@@ -1076,7 +1138,7 @@ document.querySelector("#task-form").addEventListener("submit", (event) => {
   } else {
     state.tasks.push({ id: createId(), poolId: pool.id, title: pool.title, subject: pool.subject, unit: pool.unit, minimum, date: today, completed: false });
   }
-  if (saveState()) elements.taskDialog.close();
+  saveStateAndClose(elements.taskDialog, form);
 });
 
 document.querySelector("#complete-form").addEventListener("submit", (event) => {
@@ -1091,8 +1153,7 @@ document.querySelector("#complete-form").addEventListener("submit", (event) => {
     return;
   }
   if (!taskMeetsMinimum(task, actual)) {
-    commitTaskRecord(task.id, actual, false);
-    if (saveState()) elements.completeDialog.close();
+    commitTaskRecord(task.id, actual, false);    saveStateAndClose(elements.completeDialog, form);
     return;
   }
   pendingTaskRecord = { taskId: task.id, amount: actual };
