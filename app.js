@@ -37,7 +37,8 @@ const elements = {
   taskDialog: document.querySelector("#task-dialog"),
   completeDialog: document.querySelector("#complete-dialog"),
   menuDialog: document.querySelector("#menu-dialog"),
-  calendarDialog: document.querySelector("#calendar-dialog"),
+  dashboard: document.querySelector("#dashboard"),
+  calendarView: document.querySelector("#calendar-view"),
   calendarMonth: document.querySelector("#calendar-month"),
   calendarGrid: document.querySelector("#calendar-grid"),
   calendarAgendaTitle: document.querySelector("#calendar-agenda-title"),
@@ -346,6 +347,7 @@ async function initializeAuth() {
         firestoreStateRef = null;
         state = emptyState();
         legacyDataPendingMigration = false;
+        elements.calendarView.hidden = true;
         setAuthenticatedView(false);
         setAuthMessage("Googleアカウントでログインしてください。初回利用時は自動で新規登録されます。");
       }
@@ -565,21 +567,65 @@ function renderCalendar() {
   elements.calendarMonth.textContent = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long" }).format(calendarMonth);
   const firstWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = Array.from({ length: firstWeekday }, () => '<span class="calendar-cell calendar-cell-empty" role="presentation"></span>');
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const date = dateKey(new Date(year, month, day));
-    const schedules = getSchedulesForDate(date);
-    const isToday = date === today;
-    const selected = date === selectedCalendarDate;
-    const scheduleCount = schedules.length;
-    cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}" aria-pressed="${selected}">
-      <span class="calendar-day-number">${day}</span>
-      ${scheduleCount ? `<span class="calendar-day-count">${scheduleCount}件</span>` : ""}
-      ${schedules.slice(0, 2).map((schedule) => `<span class="calendar-marker ${schedule.kind}">${schedule.kind === "event" ? escapeHtml(schedule.event.title) : `${escapeHtml(schedule.quiz.subject)}${schedule.quiz.period ? ` ${schedule.quiz.period}校時` : ""} ${schedule.quiz.kind === "submission" ? "提出物" : "小テスト"}`}</span>`).join("")}
-      ${scheduleCount > 2 ? `<span class="calendar-marker-more">ほか${scheduleCount - 2}件</span>` : ""}
-    </button>`);
+  const monthStart = dateKey(new Date(year, month, 1));
+  const monthEnd = dateKey(new Date(year, month, daysInMonth));
+  const weekCount = Math.ceil((firstWeekday + daysInMonth) / 7);
+  const weeks = [];
+  for (let weekIndex = 0; weekIndex < weekCount; weekIndex += 1) {
+    const weekStart = shiftDate(monthStart, weekIndex * 7 - firstWeekday);
+    const weekEnd = shiftDate(weekStart, 6);
+    const cells = [];
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      const date = shiftDate(weekStart, weekday);
+      if (date < monthStart || date > monthEnd) {
+        cells.push('<span class="calendar-cell calendar-cell-empty" role="presentation"></span>');
+        continue;
+      }
+      const schedules = getSchedulesForDate(date);
+      const quizzes = schedules.filter((schedule) => schedule.kind === "quiz").map((schedule) => schedule.quiz);
+      const isToday = date === today;
+      const selected = date === selectedCalendarDate;
+      const scheduleCount = schedules.length;
+      cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}" aria-pressed="${selected}">
+        <span class="calendar-day-number">${Number(date.slice(-2))}</span>
+        ${quizzes.slice(0, 2).map((quiz) => `<span class="calendar-marker quiz">${escapeHtml(quiz.subject)}${quiz.period ? ` ${quiz.period}校時` : ""} ${quiz.kind === "submission" ? "提出物" : "小テスト"}</span>`).join("")}
+        ${quizzes.length > 2 ? `<span class="calendar-marker-more">ほか${quizzes.length - 2}件</span>` : ""}
+      </button>`);
+    }
+
+    const overlappingEvents = state.events
+      .filter((item) => item.start && item.end && item.start <= weekEnd && item.end >= weekStart && item.start <= monthEnd && item.end >= monthStart)
+      .map((item) => {
+        const start = item.start > weekStart ? item.start : weekStart;
+        const end = item.end < weekEnd ? item.end : weekEnd;
+        return {
+          event: item,
+          start: start < monthStart ? monthStart : start,
+          end: end > monthEnd ? monthEnd : end,
+        };
+      })
+      .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.event.title.localeCompare(b.event.title));
+    const laneEnds = [];
+    const bands = overlappingEvents.map(({ event: item, start, end }) => {
+      let lane = laneEnds.findIndex((laneEnd) => laneEnd < start);
+      if (lane < 0) lane = laneEnds.length;
+      laneEnds[lane] = end;
+      const startColumn = new Date(`${start}T00:00:00`).getDay() + 1;
+      const endColumn = new Date(`${end}T00:00:00`).getDay() + 2;
+      const classes = [
+        "calendar-event-band",
+        item.start === start ? "is-event-start" : "",
+        item.end === end ? "is-event-end" : "",
+      ].filter(Boolean).join(" ");
+      return `<span class="${classes}" style="grid-column:${startColumn}/${endColumn};grid-row:${lane + 1}" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>`;
+    }).join("");
+    const eventSpace = 36 + laneEnds.length * 18;
+    weeks.push(`<section class="calendar-week" style="--event-space:${eventSpace}px">
+      <div class="calendar-days">${cells.join("")}</div>
+      <div class="calendar-event-layer" aria-hidden="true">${bands}</div>
+    </section>`);
   }
-  elements.calendarGrid.innerHTML = cells.join("");
+  elements.calendarGrid.innerHTML = weeks.join("");
   renderCalendarAgenda();
 }
 
@@ -757,11 +803,21 @@ document.addEventListener("click", (event) => {
     calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     selectedCalendarDate = today;
     renderCalendar();
-    elements.calendarDialog.showModal();
+    elements.dashboard.hidden = true;
+    elements.calendarView.hidden = false;
+    window.scrollTo({ top: 0 });
     return;
   }
   if (event.target.closest("[data-menu-home]")) {
     elements.menuDialog.close();
+    elements.calendarView.hidden = true;
+    elements.dashboard.hidden = false;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  if (event.target.closest("[data-calendar-home]")) {
+    elements.calendarView.hidden = true;
+    elements.dashboard.hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }

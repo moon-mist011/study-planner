@@ -119,30 +119,36 @@
       <button class="menu-item" type="button" data-menu-calendar>カレンダー <span aria-hidden="true">→</span></button>
     </dialog>
 
-    <dialog id="calendar-dialog" class="calendar-dialog" aria-labelledby="calendar-title">
-      <div class="calendar-header">
-        <div>
-          <p class="eyebrow">SCHEDULE</p>
-          <h2 id="calendar-title">カレンダー</h2>
+    <main id="calendar-view" class="page-shell calendar-page" hidden>
+      <section class="calendar-panel" aria-labelledby="calendar-title">
+        <div class="calendar-header">
+          <div>
+            <p class="eyebrow">SCHEDULE</p>
+            <h1 id="calendar-title">カレンダー</h1>
+          </div>
+          <button class="button button-secondary button-small" type="button" data-calendar-home>ホームへ戻る</button>
         </div>
-        <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
-      </div>
-      <div class="calendar-toolbar">
-        <button class="calendar-nav" type="button" data-calendar-shift="-1" aria-label="前の月">‹</button>
-        <strong id="calendar-month"></strong>
-        <button class="calendar-nav" type="button" data-calendar-shift="1" aria-label="次の月">›</button>
-        <button class="calendar-today" type="button" data-calendar-today>今日</button>
-      </div>
-      <div class="calendar-weekdays" aria-hidden="true">
-        <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
-      </div>
-      <div class="calendar-grid" id="calendar-grid" role="grid" aria-label="月間カレンダー"></div>
-      <section class="calendar-agenda" aria-live="polite">
-        <h3 id="calendar-agenda-title"></h3>
-        <div class="calendar-agenda-list" id="calendar-agenda-list"></div>
-        <p class="muted-empty" id="calendar-agenda-empty">この日の予定はありません。</p>
+        <div class="calendar-layout">
+          <section class="calendar-month-view" aria-label="月間予定">
+            <div class="calendar-toolbar">
+              <button class="calendar-nav" type="button" data-calendar-shift="-1" aria-label="前の月">‹</button>
+              <strong id="calendar-month"></strong>
+              <button class="calendar-nav" type="button" data-calendar-shift="1" aria-label="次の月">›</button>
+              <button class="calendar-today" type="button" data-calendar-today>今日</button>
+            </div>
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+            </div>
+            <div class="calendar-grid" id="calendar-grid" role="grid" aria-label="月間カレンダー"></div>
+          </section>
+          <section class="calendar-agenda" aria-live="polite">
+            <h2 id="calendar-agenda-title"></h2>
+            <div class="calendar-agenda-list" id="calendar-agenda-list"></div>
+            <p class="muted-empty" id="calendar-agenda-empty">この日の予定はありません。</p>
+          </section>
+        </div>
       </section>
-    </dialog>
+    </main>
 
     <dialog id="event-dialog" class="modal">
       <form id="event-form">
