@@ -510,7 +510,7 @@ function renderPeriodOptions(selectedValue) {
 function settingsSubjectRow(subject = "", originalSubject = "") {
   return `<div class="settings-subject-row" data-original-subject="${escapeHtml(originalSubject)}">
     <input type="text" name="subject" value="${escapeHtml(subject)}" maxlength="${MAX_SUBJECT_LENGTH}" aria-label="科目名" required />
-    <button class="text-button delete-button" type="button" data-remove-setting-subject aria-label="${subject ? `${escapeHtml(subject)}を削除` : "科目を削除"}">削除</button>
+    <button class="text-button icon-action delete-button" type="button" data-remove-setting-subject aria-label="${subject ? `${escapeHtml(subject)}を削除` : "科目を削除"}" title="削除">🗑️</button>
   </div>`;
 }
 
@@ -567,7 +567,7 @@ function renderTaskCard(task) {
     <div class="task-main"><p class="card-title">${escapeHtml(title)}</p>
         <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)}${details}</p>
     </div>
-      <div class="task-actions"><button class="text-button" type="button" data-edit-task="${escapeHtml(task.id)}">編集</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
+      <div class="task-actions"><button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
   </article>`;
 }
 
@@ -620,7 +620,7 @@ function renderEventCard(event) {
       <div class="card-top"><div><p class="card-title">${escapeHtml(event.title)}</p><p class="card-subtitle">${eventDates}</p></div>
         <span class="badge">${typeLabel}</span>
       </div>
-      <div class="event-actions"><button class="text-button" type="button" data-edit-event="${escapeHtml(event.id)}">編集</button><button class="text-button delete-button" type="button" data-delete-event="${escapeHtml(event.id)}">削除</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
+      <div class="event-actions"><button class="text-button icon-action" type="button" data-edit-event="${escapeHtml(event.id)}" aria-label="イベントを編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-event="${escapeHtml(event.id)}" aria-label="イベントを削除" title="削除">🗑️</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
     </div>
     <div class="event-goals">${eventGoals.length
       ? eventGoals.map((goal) => renderGoalCard(goal)).join("")
@@ -639,7 +639,7 @@ function renderGoalCard(goal) {
   const submissionDate = goal.submissionDate ? ` ・ 提出 ${formatDate(goal.submissionDate)}` : "";
   return `<article class="goal-card">
     <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p></div>
-      <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button" type="button" data-edit-goal="${escapeHtml(goal.id)}">編集</button><button class="text-button delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}">削除</button></div>
+      <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(goal.id)}" aria-label="長期計画を編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}" aria-label="長期計画を削除" title="削除">🗑️</button></div>
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
     <div class="progress-meta"><span>${completed} / ${total} ${escapeHtml(goal.unit)}</span><span>${percent}%</span></div>
@@ -669,11 +669,11 @@ function renderQuizzes() {
   elements.quizzes.innerHTML = quizzes.map((quiz) => {
     const event = state.events.find((item) => item.id === quiz.eventId);
     const actions = quiz.sourceGoalId
-      ? `<button class="text-button" type="button" data-edit-goal="${escapeHtml(quiz.sourceGoalId)}">長期計画を編集</button>`
-      : `<button class="text-button" type="button" data-edit-quiz="${escapeHtml(quiz.id)}">編集</button>
+      ? `<button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(quiz.sourceGoalId)}" aria-label="長期計画を編集" title="編集">✏️</button>`
+      : `<button class="text-button icon-action" type="button" data-edit-quiz="${escapeHtml(quiz.id)}" aria-label="予定を編集" title="編集">✏️</button>
          <button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}"${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? " disabled" : ""}>${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? "ToDo作成済み" : "今日のToDoへ"}</button>
-         <button class="text-button" type="button" data-duplicate-quiz="${escapeHtml(quiz.id)}">複製</button>
-         <button class="text-button delete-button" type="button" data-delete-quiz="${escapeHtml(quiz.id)}">削除</button>`;
+         <button class="text-button icon-action" type="button" data-duplicate-quiz="${escapeHtml(quiz.id)}" aria-label="予定を複製" title="複製">📑</button>
+         <button class="text-button icon-action delete-button" type="button" data-delete-quiz="${escapeHtml(quiz.id)}" aria-label="予定を削除" title="削除">🗑️</button>`;
     return `<article class="quiz-card">
       <div class="quiz-info">
         <p class="card-title">${escapeHtml(quiz.title || "小テスト・提出物")}</p>
@@ -798,7 +798,7 @@ function renderPools() {
       </div>
       <div class="progress-track" role="progressbar" aria-label="${escapeHtml(pool.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
       <div class="progress-meta"><span>${pool.completed} / ${pool.target} ${escapeHtml(pool.unit)} 完了</span><span>${percent}%</span></div>
-      <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions"><button class="text-button" type="button" data-edit-pool="${escapeHtml(pool.id)}">編集</button>${buttons}</div></div>
+      <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions"><button class="text-button icon-action" type="button" data-edit-pool="${escapeHtml(pool.id)}" aria-label="週間プールを編集" title="編集">✏️</button>${buttons}</div></div>
     </article>`;
   }).join("");
 }
