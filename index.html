@@ -132,8 +132,36 @@
       </div>
       <button class="menu-item" type="button" data-menu-home>ホーム <span aria-hidden="true">→</span></button>
       <button class="menu-item" type="button" data-menu-calendar>カレンダー <span aria-hidden="true">→</span></button>
+      <button class="menu-item" type="button" data-menu-record>記録 <span aria-hidden="true">→</span></button>
       <button class="menu-item" type="button" data-open-dialog="settings-dialog">設定 <span aria-hidden="true">→</span></button>
     </dialog>
+
+    <main id="recording-view" class="recording-view" hidden>
+      <section id="recording-task-select" class="recording-task-select" aria-labelledby="recording-select-title" hidden>
+        <div class="recording-select-content">
+          <p class="eyebrow">STUDY RECORD</p>
+          <h1 id="recording-select-title">今日取り組むタスク</h1>
+          <p class="recording-select-hint">タスクを選ぶと、記録画面に移ります。</p>
+          <div id="recording-task-list" class="recording-task-list"></div>
+          <p id="recording-task-empty" class="recording-empty" hidden>今日のタスクはありません。ホームでタスクを追加してください。</p>
+          <button class="button button-quiet recording-back" type="button" data-record-home>ホームへ戻る</button>
+        </div>
+      </section>
+      <section id="recording-session" class="recording-session" aria-label="勉強時間の記録" hidden>
+        <div class="recording-content">
+          <p class="eyebrow">NOW STUDYING</p>
+          <h1 id="recording-task-title" class="recording-task-title"></h1>
+          <output id="recording-elapsed" class="recording-elapsed" aria-label="計測中の時間">00:00:00</output>
+          <time id="recording-clock" class="recording-clock"></time>
+          <div class="recording-actions">
+            <button id="recording-start" class="button button-primary recording-button" type="button" data-record-start>記録開始</button>
+            <button id="recording-pause" class="button button-secondary recording-button" type="button" data-record-pause hidden>一時停止</button>
+            <button class="button button-quiet recording-button" type="button" data-record-change>タスク変更</button>
+            <button id="recording-end" class="button button-quiet recording-button recording-end" type="button" data-record-end hidden>終了</button>
+          </div>
+        </div>
+      </section>
+    </main>
 
     <main id="calendar-view" class="page-shell calendar-page" hidden>
       <section class="calendar-panel" aria-labelledby="calendar-title">
@@ -156,11 +184,26 @@
               <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
             </div>
             <div class="calendar-grid" id="calendar-grid" role="grid" aria-label="月間カレンダー"></div>
+            <div class="study-heatmap-legend" aria-label="勉強時間の色分け">
+              <span class="study-heatmap-label">勉強時間</span>
+              <span class="study-heatmap-key"><i></i>0分</span>
+              <span class="study-heatmap-key level-1"><i></i>1分〜30分未満</span>
+              <span class="study-heatmap-key level-2"><i></i>30分〜1時間未満</span>
+              <span class="study-heatmap-key level-3"><i></i>1時間〜2時間未満</span>
+              <span class="study-heatmap-key level-4"><i></i>2時間〜3時間未満</span>
+              <span class="study-heatmap-key level-5"><i></i>3時間以上</span>
+            </div>
           </section>
           <section class="calendar-agenda" aria-live="polite">
             <h2 id="calendar-agenda-title"></h2>
             <div class="calendar-agenda-list" id="calendar-agenda-list"></div>
             <p class="muted-empty" id="calendar-agenda-empty">この日の予定はありません。</p>
+            <section class="calendar-study-agenda" aria-labelledby="calendar-study-title">
+              <h3 id="calendar-study-title">勉強時間</h3>
+              <p id="calendar-study-total" class="calendar-study-total"></p>
+              <div id="calendar-study-list" class="calendar-study-list"></div>
+              <p id="calendar-study-empty" class="muted-empty">この日の勉強記録はありません。</p>
+            </section>
           </section>
         </div>
       </section>

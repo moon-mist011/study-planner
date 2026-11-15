@@ -47,20 +47,36 @@ const elements = {
   settingsDialog: document.querySelector("#settings-dialog"),
   settingsSubjects: document.querySelector("#settings-subject-list"),
   menuDialog: document.querySelector("#menu-dialog"),
-  dashboard: document.querySelector("#dashboard"),
   calendarView: document.querySelector("#calendar-view"),
+  recordingView: document.querySelector("#recording-view"),
+  recordingTaskSelect: document.querySelector("#recording-task-select"),
+  recordingTaskList: document.querySelector("#recording-task-list"),
+  recordingTaskEmpty: document.querySelector("#recording-task-empty"),
+  recordingSession: document.querySelector("#recording-session"),
+  recordingTaskTitle: document.querySelector("#recording-task-title"),
+  recordingElapsed: document.querySelector("#recording-elapsed"),
+  recordingClock: document.querySelector("#recording-clock"),
+  recordingStart: document.querySelector("#recording-start"),
+  recordingPause: document.querySelector("#recording-pause"),
+  recordingEnd: document.querySelector("#recording-end"),
   calendarMonth: document.querySelector("#calendar-month"),
   calendarGrid: document.querySelector("#calendar-grid"),
   calendarAgendaTitle: document.querySelector("#calendar-agenda-title"),
   calendarAgenda: document.querySelector("#calendar-agenda-list"),
   calendarAgendaEmpty: document.querySelector("#calendar-agenda-empty"),
+  calendarStudyTotal: document.querySelector("#calendar-study-total"),
+  calendarStudyList: document.querySelector("#calendar-study-list"),
+  calendarStudyEmpty: document.querySelector("#calendar-study-empty"),
 };
 
-let today = dateKey(new Date());
+let today = dateKeyInJst(new Date());
 let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCalendarDate = today;
+let calendarRenderedMinute = -1;
 let state = emptyState();
 let pendingTaskRecord = null;
+let selectingRecordingTask = false;
+let recordingEndTaskId = null;
 let currentUser = null;
 let firebaseAuth = null;
 let firebaseAuthApi = null;
@@ -79,6 +95,17 @@ function dateKey(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function dateKeyInJst(date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type).value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function shiftDate(dateString, days) {
@@ -101,6 +128,7 @@ function emptyState() {
     quizzes: [],
     pools: [],
     tasks: [],
+    studyTimer: null,
     settings: { subjects: [...DEFAULT_SUBJECTS], periodCount: DEFAULT_PERIOD_COUNT },
   };
 }
@@ -129,12 +157,32 @@ function normalizeState(stored) {
       .slice(0, MAX_SUBJECTS)
     : [];
   const storedPeriodCount = Number(stored.settings?.periodCount);
+  const tasks = Array.isArray(stored.tasks) ? stored.tasks : [];
+  tasks.forEach((task) => {
+    const seconds = Number(task.studySeconds);
+    task.studySeconds = Number.isSafeInteger(seconds) && seconds > 0 ? seconds : 0;
+  });
+  const storedTimer = stored.studyTimer;
+  const studyTimer = storedTimer && typeof storedTimer.taskId === "string"
+    && tasks.some((task) => task.id === storedTimer.taskId)
+    ? {
+      taskId: storedTimer.taskId,
+      elapsedSeconds: Number.isSafeInteger(Number(storedTimer.elapsedSeconds)) && Number(storedTimer.elapsedSeconds) > 0
+        ? Number(storedTimer.elapsedSeconds)
+        : 0,
+      startedAt: Number.isFinite(Number(storedTimer.startedAt)) && Number(storedTimer.startedAt) > 0
+        ? Number(storedTimer.startedAt)
+        : null,
+      hasStarted: Boolean(storedTimer.hasStarted || storedTimer.startedAt || Number(storedTimer.elapsedSeconds) > 0),
+    }
+    : null;
   return {
     events,
     goals,
     quizzes: Array.isArray(stored.quizzes) ? stored.quizzes : [],
     pools: Array.isArray(stored.pools) ? stored.pools : [],
-    tasks: Array.isArray(stored.tasks) ? stored.tasks : [],
+    tasks,
+    studyTimer,
     settings: {
       subjects: storedSubjects.length ? storedSubjects : [...DEFAULT_SUBJECTS],
       periodCount: Number.isSafeInteger(storedPeriodCount) && storedPeriodCount >= 1 && storedPeriodCount <= MAX_PERIOD_COUNT
@@ -158,6 +206,9 @@ function saveState({ deferRender = false } = {}) {
   if (!currentUser || !firestoreStateRef) {
     console.error("ログイン状態を確認できないため、データを保存できません。");
     return false;
+  }
+  if (state.studyTimer && !state.tasks.some((task) => task.id === state.studyTimer.taskId)) {
+    state.studyTimer = null;
   }
   const updatedAt = Date.now();
   try {
@@ -232,6 +283,8 @@ function setAuthMessage(message, isError = false) {
 function setAuthenticatedView(isReady) {
   elements.authScreen.hidden = isReady;
   elements.dashboard.hidden = !isReady;
+  elements.recordingView.hidden = true;
+  document.body.classList.remove("recording-fullscreen");
   elements.authUser.hidden = !currentUser;
   elements.authUser.textContent = currentUser?.displayName || currentUser?.email || "";
   elements.authUser.title = currentUser?.email || "";
@@ -470,6 +523,118 @@ function render() {
   renderPools();
   renderSummary();
   renderPoolOptions();
+  renderRecording();
+}
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.floor(seconds));
+  const hours = String(Math.floor(total / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+  const remainingSeconds = String(total % 60).padStart(2, "0");
+  return `${hours}:${minutes}:${remainingSeconds}`;
+}
+
+function getRecordingTask() {
+  return state.tasks.find((task) => task.id === state.studyTimer?.taskId);
+}
+
+function getRecordingElapsedSeconds() {
+  const timer = state.studyTimer;
+  if (!timer) return 0;
+  const runningSeconds = timer.startedAt ? Math.floor((Date.now() - timer.startedAt) / 1000) : 0;
+  return timer.elapsedSeconds + Math.max(0, runningSeconds);
+}
+
+function getTaskStudySeconds(task) {
+  const activeSeconds = state.studyTimer?.taskId === task.id && state.studyTimer.startedAt
+    ? Math.max(0, Math.floor((Date.now() - state.studyTimer.startedAt) / 1000))
+    : 0;
+  return (task.studySeconds || 0) + activeSeconds;
+}
+
+function getStudySecondsForDate(date) {
+  return state.tasks
+    .filter((task) => task.date === date)
+    .reduce((total, task) => total + getTaskStudySeconds(task), 0);
+}
+
+function studyHeatLevel(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  if (minutes === 0) return 0;
+  if (minutes < 30) return 1;
+  if (minutes < 60) return 2;
+  if (minutes < 120) return 3;
+  if (minutes < 180) return 4;
+  return 5;
+}
+
+function formatCalendarDuration(seconds) {
+  const totalMinutes = Math.floor(seconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}分`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h${String(minutes).padStart(2, "0")}m`;
+}
+
+function renderRecordingClock() {
+  const now = new Date();
+  elements.recordingClock.textContent = `${new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(now)} JST`;
+}
+
+function renderRecording() {
+  const task = getRecordingTask();
+  const showingTaskSelect = selectingRecordingTask || !task;
+  elements.recordingTaskSelect.hidden = !showingTaskSelect;
+  elements.recordingSession.hidden = showingTaskSelect;
+  const todayTasks = state.tasks.filter((item) => item.date === today);
+  elements.recordingTaskList.innerHTML = todayTasks.map((item) => {
+    const pool = state.pools.find((poolItem) => poolItem.id === item.poolId);
+    const title = pool?.title || item.title;
+    const subject = pool?.subject || item.subject || "科目未設定";
+    return `<button class="recording-task-option" type="button" data-record-task="${escapeHtml(item.id)}">
+      <span class="recording-option-title">${escapeHtml(title)}</span>
+      <span class="recording-option-detail">${escapeHtml(subject)} ・ 最低 ${escapeHtml(item.minimum)} ${escapeHtml(pool?.unit || item.unit || "")}</span>
+    </button>`;
+  }).join("");
+  elements.recordingTaskEmpty.hidden = todayTasks.length > 0;
+  if (!task || showingTaskSelect) {
+    renderRecordingClock();
+    return;
+  }
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  elements.recordingTaskTitle.textContent = pool?.title || task.title;
+  elements.recordingElapsed.textContent = formatDuration(getRecordingElapsedSeconds());
+  elements.recordingStart.hidden = Boolean(state.studyTimer.startedAt);
+  elements.recordingStart.textContent = state.studyTimer.elapsedSeconds ? "記録を再開" : "記録開始";
+  elements.recordingPause.hidden = !state.studyTimer.startedAt;
+  elements.recordingEnd.hidden = !state.studyTimer.hasStarted;
+  renderRecordingClock();
+}
+
+function openRecordingView() {
+  selectingRecordingTask = !getRecordingTask();
+  elements.menuDialog.close();
+  elements.dashboard.hidden = true;
+  elements.calendarView.hidden = true;
+  elements.recordingView.hidden = false;
+  document.body.classList.add("recording-fullscreen");
+  renderRecording();
+  window.scrollTo({ top: 0 });
+}
+
+function addRunningTimeToTask(timer, now = Date.now()) {
+  if (!timer?.startedAt) return;
+  const task = state.tasks.find((item) => item.id === timer.taskId);
+  const elapsed = Math.max(0, Math.floor((now - timer.startedAt) / 1000));
+  if (task) task.studySeconds = (task.studySeconds || 0) + elapsed;
+  timer.elapsedSeconds += elapsed;
+  timer.startedAt = null;
 }
 
 function renderSubjectOptions() {
@@ -565,7 +730,7 @@ function renderTaskCard(task) {
   const details = task.scope ? ` ・ 範囲: ${escapeHtml(task.scope)}${task.scopeUnit ? ` ${escapeHtml(task.scopeUnit)}` : ""}` : "";
   return `<article class="task-card${task.completed ? " done" : ""}${isPast && !task.completed ? " past-uncompleted" : ""}">
     <div class="task-main"><p class="card-title">${escapeHtml(title)}</p>
-        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)}${details}</p>
+        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(task.studySeconds || 0)}${details}</p>
     </div>
       <div class="task-actions"><button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
   </article>`;
@@ -589,10 +754,10 @@ function renderEvents() {
 
 function scheduleEventRefresh() {
   const now = new Date();
-  const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const nextDay = new Date(`${shiftDate(dateKeyInJst(now), 1)}T00:00:00+09:00`);
   window.setTimeout(() => {
     const previousToday = today;
-    const currentDate = dateKey(new Date());
+    const currentDate = dateKeyInJst(new Date());
     today = currentDate;
     if (selectedCalendarDate === previousToday) {
       selectedCalendarDate = currentDate;
@@ -696,6 +861,7 @@ function getSchedulesForDate(date) {
 }
 
 function renderCalendar() {
+  calendarRenderedMinute = Math.floor(Date.now() / 60000);
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
   elements.calendarMonth.textContent = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long" }).format(calendarMonth);
@@ -720,10 +886,14 @@ function renderCalendar() {
       const isToday = date === today;
       const selected = date === selectedCalendarDate;
       const scheduleCount = schedules.length;
-      cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}" aria-pressed="${selected}">
+      const studySeconds = getStudySecondsForDate(date);
+      const studyMinutes = Math.floor(studySeconds / 60);
+      const heatLevel = studyHeatLevel(studySeconds);
+      cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}${heatLevel ? ` study-level-${heatLevel}` : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}${studySeconds ? `、勉強時間${formatDuration(studySeconds)}` : ""}" aria-pressed="${selected}">
         <span class="calendar-day-number">${Number(date.slice(-2))}</span>
         ${quizzes.slice(0, 2).map((quiz) => `<span class="calendar-marker quiz">${escapeHtml(quiz.subject)}${quiz.period ? ` ${quiz.period}校時` : ""} ${quiz.kind === "submission" ? "提出物" : "小テスト"}</span>`).join("")}
         ${quizzes.length > 2 ? `<span class="calendar-marker-more">ほか${quizzes.length - 2}件</span>` : ""}
+        ${studyMinutes ? `<span class="calendar-study-time" title="勉強時間 ${formatDuration(studySeconds)}">${formatCalendarDuration(studySeconds)}</span>` : ""}
       </button>`);
     }
 
@@ -778,6 +948,21 @@ function renderCalendarAgenda() {
     const period = quiz.period ? ` ・ ${quiz.period}校時` : "";
     const event = state.events.find((item) => item.id === quiz.eventId);
     return `<article class="agenda-item agenda-quiz"><span class="agenda-kind">${kind}</span><p>${escapeHtml(quiz.subject)}${period} ・ ${escapeHtml(quiz.title || kind)} ・ ${scope}${event ? ` ・ ${escapeHtml(event.title)}` : ""}</p></article>`;
+  }).join("");
+  const studyTasks = state.tasks
+    .filter((task) => task.date === date)
+    .map((task) => ({ task, seconds: getTaskStudySeconds(task) }))
+    .filter(({ task, seconds }) => seconds > 0 || task.actual > 0)
+    .sort((a, b) => b.seconds - a.seconds || a.task.title.localeCompare(b.task.title));
+  const totalSeconds = getStudySecondsForDate(date);
+  elements.calendarStudyTotal.textContent = `合計 ${formatDuration(totalSeconds)}`;
+  elements.calendarStudyEmpty.hidden = studyTasks.length > 0;
+  elements.calendarStudyList.innerHTML = studyTasks.map(({ task, seconds }) => {
+    const pool = state.pools.find((item) => item.id === task.poolId);
+    const title = pool?.title || task.title;
+    const subject = pool?.subject || task.subject || "科目未設定";
+    const amount = task.actual > 0 ? `実績 ${task.actual} ${pool?.unit || task.unit || ""}` : "実績なし";
+    return `<article class="calendar-study-item"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subject)} ・ ${amount}</span></div><time>${formatDuration(seconds)}</time></article>`;
   }).join("");
 }
 
@@ -941,12 +1126,81 @@ document.addEventListener("click", (event) => {
     elements.menuDialog.showModal();
     return;
   }
+  if (event.target.closest("[data-menu-record]")) {
+    openRecordingView();
+    return;
+  }
+  if (event.target.closest("[data-record-home]")) {
+    selectingRecordingTask = false;
+    elements.recordingView.hidden = true;
+    document.body.classList.remove("recording-fullscreen");
+    elements.dashboard.hidden = false;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  if (event.target.closest("[data-record-start]")) {
+    if (getRecordingTask() && state.studyTimer && !state.studyTimer.startedAt) {
+      state.studyTimer.startedAt = Date.now();
+      state.studyTimer.hasStarted = true;
+      saveState();
+    }
+    return;
+  }
+  if (event.target.closest("[data-record-pause]")) {
+    addRunningTimeToTask(state.studyTimer);
+    saveState();
+    return;
+  }
+  if (event.target.closest("[data-record-change]")) {
+    addRunningTimeToTask(state.studyTimer);
+    saveState();
+    selectingRecordingTask = true;
+    renderRecording();
+    return;
+  }
+  if (event.target.closest("[data-record-end]")) {
+    const task = getRecordingTask();
+    const timer = state.studyTimer;
+    if (!task || !timer?.hasStarted) return;
+    addRunningTimeToTask(timer);
+    const elapsedSeconds = timer.elapsedSeconds;
+    state.studyTimer = null;
+    recordingEndTaskId = task.id;
+    selectingRecordingTask = false;
+    elements.recordingView.hidden = true;
+    document.body.classList.remove("recording-fullscreen");
+    elements.dashboard.hidden = false;
+    saveState();
+    const form = elements.completeDialog.querySelector("form");
+    openDialog(elements.completeDialog);
+    form.elements.taskId.value = task.id;
+    form.elements.actual.value = task.completed ? 0 : Math.max(0, task.minimum - (task.actual || 0));
+    const pool = state.pools.find((item) => item.id === task.poolId);
+    const title = pool?.title || task.title;
+    document.querySelector("#complete-task-title").textContent = `${title} — 計測 ${formatDuration(elapsedSeconds)} ・ 最低 ${task.minimum} ${pool?.unit || task.unit}`;
+    elements.completeDialog.querySelector(".modal-heading h2").textContent = "勉強記録を終了";
+    return;
+  }
+  const recordingTaskButton = event.target.closest("[data-record-task]");
+  if (recordingTaskButton) {
+    const task = state.tasks.find((item) => item.id === recordingTaskButton.dataset.recordTask && item.date === today);
+    if (!task) return;
+    if (state.studyTimer?.taskId !== task.id) {
+      addRunningTimeToTask(state.studyTimer);
+      state.studyTimer = { taskId: task.id, elapsedSeconds: 0, startedAt: null, hasStarted: false };
+    }
+    selectingRecordingTask = false;
+    saveState();
+    return;
+  }
   if (event.target.closest("[data-menu-calendar]")) {
     elements.menuDialog.close();
     calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     selectedCalendarDate = today;
     renderCalendar();
     elements.dashboard.hidden = true;
+    elements.recordingView.hidden = true;
+    document.body.classList.remove("recording-fullscreen");
     elements.calendarView.hidden = false;
     window.scrollTo({ top: 0 });
     return;
@@ -954,12 +1208,16 @@ document.addEventListener("click", (event) => {
   if (event.target.closest("[data-menu-home]")) {
     elements.menuDialog.close();
     elements.calendarView.hidden = true;
+    elements.recordingView.hidden = true;
+    document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
   if (event.target.closest("[data-calendar-home]")) {
     elements.calendarView.hidden = true;
+    elements.recordingView.hidden = true;
+    document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
     return;
@@ -1173,6 +1431,7 @@ document.addEventListener("click", (event) => {
     if (!pendingTaskRecord) return;
     commitTaskRecord(pendingTaskRecord.taskId, pendingTaskRecord.amount, outcomeButton.dataset.taskOutcome === "complete");
     pendingTaskRecord = null;
+    recordingEndTaskId = null;
     const form = elements.completeDialog.querySelector("form");
     saveStateAndClose(elements.completeDialog, form);
     return;
@@ -1422,12 +1681,21 @@ document.querySelector("#complete-form").addEventListener("submit", (event) => {
   const task = state.tasks.find((item) => item.id === form.elements.taskId.value);
   const pool = task && state.pools.find((item) => item.id === task.poolId);
   const actual = Number(form.elements.actual.value);
-  if (!task || task.completed || !Number.isSafeInteger(actual) || actual < 0) {
+  const endingStudy = task && recordingEndTaskId === task.id;
+  if (!task || (task.completed && !endingStudy) || !Number.isSafeInteger(actual) || actual < 0) {
     showError(form, "実績量を0以上の整数で入力してください。");
     return;
   }
+  if (task.completed) {
+    task.actual = (task.actual || 0) + actual;
+    recordingEndTaskId = null;
+    saveStateAndClose(elements.completeDialog, form);
+    return;
+  }
   if (!taskMeetsMinimum(task, actual)) {
-    commitTaskRecord(task.id, actual, false);    saveStateAndClose(elements.completeDialog, form);
+    commitTaskRecord(task.id, actual, false);
+    recordingEndTaskId = null;
+    saveStateAndClose(elements.completeDialog, form);
     return;
   }
   pendingTaskRecord = { taskId: task.id, amount: actual };
@@ -1447,6 +1715,11 @@ function commitTaskRecord(taskId, amount, complete) {
   const goal = state.goals.find((item) => item.id === pool.goalId);
   if (goal) goal.completed = Math.min(goal.total * goal.laps, goal.completed + amount);
 }
+
+elements.completeDialog.addEventListener("close", () => {
+  pendingTaskRecord = null;
+  recordingEndTaskId = null;
+});
 
 function carryPool(poolId) {
   const pool = state.pools.find((item) => item.id === poolId);
@@ -1476,6 +1749,11 @@ document.querySelectorAll("dialog").forEach((dialog) => {
 setAuthenticatedView(false);
 initializeAuth();
 scheduleEventRefresh();
+window.setInterval(() => {
+  if (!elements.recordingView.hidden) renderRecording();
+  if (!elements.calendarView.hidden && state.studyTimer?.startedAt
+    && calendarRenderedMinute !== Math.floor(Date.now() / 60000)) renderCalendar();
+}, 1000);
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", () => {
