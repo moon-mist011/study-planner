@@ -54,7 +54,7 @@ h1 span { color: var(--green); }
 .section-heading .eyebrow { margin-bottom: 4px; }
 h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .section-date { color: #89958e; font-size: 11px; }
-.past-tasks-section { margin-bottom: 20px; }
+.past-tasks-section { margin: 20px 0 20px; }
 .past-list-heading { margin: 20px 0 10px; font-size: 13px; }
 .past-list-heading.first { margin-top: 0; }
 .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
@@ -223,6 +223,7 @@ button.calendar-cell:hover { background: #f7faf6; }
   .panel { padding: 18px 15px; border-radius: 13px; }
   .today-section { margin-bottom: 14px; }
   .dashboard-grid { grid-template-columns: 1fr; gap: 14px; }
+  .past-tasks-section { margin-top: 14px; }
   .calendar-page { padding: 18px 14px 16px; }
   .calendar-layout { grid-template-columns: 1fr; gap: 14px; }
   .calendar-agenda { padding: 14px; }
