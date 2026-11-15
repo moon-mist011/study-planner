@@ -150,7 +150,7 @@ function readLocalState(key) {
   }
 }
 
-function saveState() {
+function saveState({ deferRender = false } = {}) {
   if (!currentUser || !firestoreStateRef) {
     console.error("ログイン状態を確認できないため、データを保存できません。");
     return false;
@@ -163,7 +163,7 @@ function saveState() {
     console.error("データを保存できませんでした。", error);
     setAuthMessage("この端末の一時保存に失敗しました。クラウドへの保存を試みています。", true);
   }
-  render();
+  if (!deferRender) render();
   const user = currentUser;
   const stateRef = firestoreStateRef;
   const snapshot = JSON.parse(JSON.stringify(state));
@@ -758,11 +758,12 @@ function showError(form, message) {
 }
 
 function saveStateAndClose(dialog, form) {
-  if (!saveState()) {
+  if (!saveState({ deferRender: true })) {
     showError(form, "ログイン状態を確認できません。再読み込みしてから、もう一度お試しください。");
     return false;
   }
   dialog.close();
+  render();
   return true;
 }
 
