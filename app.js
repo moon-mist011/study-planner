@@ -159,6 +159,17 @@ function normalizeState(stored) {
     : [];
   const storedPeriodCount = Number(stored.settings?.periodCount);
   const tasks = Array.isArray(stored.tasks) ? stored.tasks : [];
+  const pools = Array.isArray(stored.pools) ? stored.pools : [];
+  pools.forEach((pool) => {
+    if (pool.scope === "長期計画の提出日" && pool.deadline) {
+      pool.scope = formatSubmissionDate(pool.deadline);
+    }
+  });
+  tasks.forEach((task) => {
+    if (task.scope !== "長期計画の提出日") return;
+    const pool = pools.find((item) => item.id === task.poolId);
+    if (pool?.deadline) task.scope = formatSubmissionDate(pool.deadline);
+  });
   tasks.forEach((task) => {
     const seconds = Number(task.studySeconds);
     task.studySeconds = Number.isSafeInteger(seconds) && seconds > 0 ? seconds : 0;
@@ -187,7 +198,7 @@ function normalizeState(stored) {
     events,
     goals,
     quizzes: Array.isArray(stored.quizzes) ? stored.quizzes : [],
-    pools: Array.isArray(stored.pools) ? stored.pools : [],
+    pools,
     tasks,
     studyTimer,
     settings: {
@@ -510,6 +521,10 @@ function escapeHtml(value) {
 function formatDate(value, options = { month: "numeric", day: "numeric" }) {
   const [year, month, day] = value.split("-").map(Number);
   return new Intl.DateTimeFormat("ja-JP", options).format(new Date(year, month - 1, day));
+}
+
+function formatSubmissionDate(value) {
+  return `提出日 ${formatDate(value, { year: "numeric", month: "long", day: "numeric" })}`;
 }
 
 function goalProgress(goal) {
@@ -904,7 +919,7 @@ function getScheduledQuizzes() {
       title: goal.title,
       subject: goal.subject,
       date: goal.submissionDate,
-      scope: "長期計画の提出日",
+      scope: formatSubmissionDate(goal.submissionDate),
       period: null,
       eventId: goal.eventId,
     }));
@@ -932,7 +947,7 @@ function renderQuizzes() {
     return `<article class="quiz-card${completedTask ? " completed" : ""}">
       <div class="quiz-info">
         <p class="card-title">${escapeHtml(quiz.title || "小テスト・提出物")}</p>
-        <p class="card-subtitle">${escapeHtml(quiz.scope || (quiz.sourceGoalId ? "長期計画の提出日" : "範囲未設定"))}${quiz.unit ? ` ${escapeHtml(quiz.unit)}` : ""}</p>
+        <p class="card-subtitle">${escapeHtml(quiz.scope || (quiz.sourceGoalId ? formatSubmissionDate(quiz.date) : "範囲未設定"))}${quiz.unit ? ` ${escapeHtml(quiz.unit)}` : ""}</p>
         <div class="quiz-meta"><span>${formatDate(quiz.date, { month: "numeric", day: "numeric", weekday: "short" })}</span>${quiz.period ? `<strong>${quiz.period}<span>校時</span></strong>` : ""}<span class="badge">${escapeHtml(quiz.subject)}</span><span class="badge">${quiz.kind === "submission" ? "提出物" : "小テスト"}</span>${event ? `<span class="badge">${escapeHtml(event.title)}</span>` : ""}</div>
       </div>
       <div class="quiz-actions">${actions}</div>
@@ -1865,6 +1880,7 @@ document.querySelector("#goal-form").addEventListener("submit", (event) => {
     const submissionPool = state.pools.find((pool) => pool.sourceGoalId === goal.id);
     if (submissionPool && goal.submissionDate) {
       const start = getSchedulePoolStart(goal.submissionDate);
+      submissionPool.scope = formatSubmissionDate(goal.submissionDate);
       submissionPool.deadline = goal.submissionDate;
       submissionPool.start = start;
       submissionPool.end = shiftDate(start, 6);
