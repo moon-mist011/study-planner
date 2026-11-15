@@ -1039,34 +1039,49 @@ function renderCalendarAgenda() {
     const event = state.events.find((item) => item.id === quiz.eventId);
     return `<article class="agenda-item agenda-quiz"><span class="agenda-kind">${kind}</span><p>${escapeHtml(quiz.subject)}${period} ・ ${escapeHtml(quiz.title || kind)} ・ ${scope}${event ? ` ・ ${escapeHtml(event.title)}` : ""}</p></article>`;
   }).join("");
-  const studyTasks = state.tasks
-    .map((task) => {
-      const logs = task.studyLogs || [];
-      const amountFromLogs = logs.reduce((total, log) => total + log.amount, 0);
-      const amountOnDate = logs
-        .filter((log) => log.date === date)
-        .reduce((total, log) => total + log.amount, 0);
-      const legacyAmount = task.date === date
-        ? Math.max(0, Number(task.actual || 0) - amountFromLogs)
-        : 0;
-      return {
-        task,
-        seconds: getTaskStudySecondsOnDate(task, date),
-        amount: legacyAmount + amountOnDate,
-      };
-    })
-    .filter(({ seconds, amount }) => seconds > 0 || amount > 0)
+  const groupedStudyTasks = new Map();
+  state.tasks.forEach((task) => {
+    const { seconds, amount } = getTaskStudyRecordOnDate(task, date);
+    if (seconds === 0 && amount === 0) return;
+    const key = getStudyTaskGroupKey(task);
+    const group = groupedStudyTasks.get(key) || { task, tasks: [], seconds: 0, amount: 0 };
+    group.tasks.push(task);
+    group.seconds += seconds;
+    group.amount += amount;
+    groupedStudyTasks.set(key, group);
+  });
+  const studyTasks = [...groupedStudyTasks.values()]
     .sort((a, b) => b.seconds - a.seconds || a.task.title.localeCompare(b.task.title));
   const totalSeconds = getStudySecondsForDate(date);
   elements.calendarStudyTotal.textContent = `合計 ${formatDuration(totalSeconds)}`;
   elements.calendarStudyEmpty.hidden = studyTasks.length > 0;
-  elements.calendarStudyList.innerHTML = studyTasks.map(({ task, seconds, amount }) => {
+  elements.calendarStudyList.innerHTML = studyTasks.map(({ task, tasks, seconds, amount }) => {
     const pool = state.pools.find((item) => item.id === task.poolId);
     const title = pool?.title || task.title;
     const subject = pool?.subject || task.subject || "科目未設定";
     const recordedAmount = amount > 0 ? `実績 ${amount} ${pool?.unit || task.unit || ""}` : "実績なし";
-    return `<article class="calendar-study-item"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subject)} ・ ${escapeHtml(recordedAmount)}</span></div><time>${formatDuration(seconds)}</time></article>`;
+    const recording = tasks.some((item) => item.date === date && state.studyTimer?.taskId === item.id && state.studyTimer.startedAt);
+    return `<article class="calendar-study-item"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subject)} ・ ${escapeHtml(recordedAmount)}</span></div><div class="calendar-study-actions"><time>${formatDuration(seconds)}</time><button class="text-button icon-action delete-button" type="button" data-delete-study-record="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の勉強記録を削除" title="${recording ? "計測中は削除できません" : "削除"}"${recording ? " disabled" : ""}>🗑️</button></div></article>`;
   }).join("");
+}
+
+function getTaskStudyRecordOnDate(task, date) {
+  const logs = task.studyLogs || [];
+  const amountFromLogs = logs.reduce((total, log) => total + log.amount, 0);
+  const amountOnDate = logs
+    .filter((log) => log.date === date)
+    .reduce((total, log) => total + log.amount, 0);
+  const legacyAmount = task.date === date
+    ? Math.max(0, Number(task.actual || 0) - amountFromLogs)
+    : 0;
+  return {
+    seconds: getTaskStudySecondsOnDate(task, date),
+    amount: legacyAmount + amountOnDate,
+  };
+}
+
+function getStudyTaskGroupKey(task) {
+  return task.poolId || task.quizId || task.id;
 }
 
 function renderPools() {
@@ -1146,6 +1161,49 @@ function deleteGoal(goalId) {
   state.goals = state.goals.filter((item) => item.id !== goalId);
   state.pools = state.pools.filter((pool) => !poolIds.has(pool.id));
   state.tasks = state.tasks.filter((task) => !poolIds.has(task.poolId));
+  saveState();
+}
+
+function deleteStudyRecord(taskId, date) {
+  const selectedTask = state.tasks.find((task) => task.id === taskId);
+  if (!selectedTask) return;
+  const groupKey = getStudyTaskGroupKey(selectedTask);
+  const tasks = state.tasks.filter((task) => getStudyTaskGroupKey(task) === groupKey
+    && (getTaskStudyRecordOnDate(task, date).seconds > 0 || getTaskStudyRecordOnDate(task, date).amount > 0));
+  if (!tasks.length) return;
+  if (tasks.some((task) => task.date === date && state.studyTimer?.taskId === task.id && state.studyTimer.startedAt)) {
+    window.alert("計測中の記録は削除できません。先に計測を終了してください。");
+    return;
+  }
+  const title = state.pools.find((pool) => pool.id === selectedTask.poolId)?.title || selectedTask.title;
+  if (!window.confirm(`「${title}」の${formatDate(date, { year: "numeric", month: "long", day: "numeric" })}の勉強記録を削除します。この日の勉強時間と実施量が削除され、週間プール・長期目標の進捗も戻ります。この操作は取り消せません。`)) return;
+
+  tasks.forEach((task) => {
+    const logs = task.studyLogs || [];
+    const loggedAmount = logs
+      .filter((log) => log.date === date)
+      .reduce((total, log) => total + log.amount, 0);
+    const legacyAmount = task.date === date
+      ? Math.max(0, Number(task.actual || 0) - logs.reduce((total, log) => total + log.amount, 0))
+      : 0;
+    const amountToRemove = loggedAmount + legacyAmount;
+    task.studyLogs = logs.filter((log) => log.date !== date);
+    if (task.date === date) task.studySeconds = 0;
+    if (amountToRemove > 0) {
+      task.actual = Math.max(0, Number(task.actual || 0) - amountToRemove);
+      if (task.actual < task.minimum) task.completed = false;
+      const pool = state.pools.find((item) => item.id === task.poolId);
+      if (pool) {
+        pool.completed = Math.max(0, Number(pool.completed || 0) - amountToRemove);
+        const goal = state.goals.find((item) => item.id === pool.goalId);
+        if (goal) goal.completed = Math.max(0, Number(goal.completed || 0) - amountToRemove);
+      }
+    }
+    if (state.studyTimer?.taskId === task.id && !state.studyTimer.startedAt) {
+      state.studyTimer.elapsedSeconds = 0;
+      state.studyTimer.hasStarted = false;
+    }
+  });
   saveState();
 }
 
@@ -1378,6 +1436,11 @@ document.addEventListener("click", (event) => {
   }
   if (event.target.closest("[data-add-study-log]")) {
     openDialog(elements.studyLogDialog);
+    return;
+  }
+  const deleteStudyRecordButton = event.target.closest("[data-delete-study-record]");
+  if (deleteStudyRecordButton) {
+    deleteStudyRecord(deleteStudyRecordButton.dataset.deleteStudyRecord, selectedCalendarDate);
     return;
   }
   const addSettingSubject = event.target.closest("[data-add-setting-subject]");

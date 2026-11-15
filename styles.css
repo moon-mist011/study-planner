@@ -225,7 +225,8 @@ button.calendar-cell:hover { background: #f7faf6; }
 .calendar-study-item > div { display: grid; min-width: 0; gap: 4px; }
 .calendar-study-item strong { overflow-wrap: anywhere; }
 .calendar-study-item span { color: #7d8982; font-size: 9px; }
-.calendar-study-item time { flex: 0 0 auto; color: var(--green-dark); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.calendar-study-actions { display: flex !important; flex: 0 0 auto; align-items: center; gap: 4px !important; }
+.calendar-study-item time { color: var(--green-dark); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .modal::backdrop { background: rgba(26,42,33,.36); backdrop-filter: blur(2px); }
 .modal form { display: grid; gap: 15px; }
 .modal-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 2px; }
