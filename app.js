@@ -458,6 +458,7 @@ function taskMeetsMinimum(task, amount) {
 function render() {
   elements.dateLabel.textContent = formatDate(today, { month: "long", day: "numeric", weekday: "short" });
   renderSubjectOptions();
+  renderEventOptions();
   renderPeriodOptions();
   renderTasks();
   renderEvents();
@@ -476,6 +477,15 @@ function renderSubjectOptions() {
     select.innerHTML = options;
     if (state.settings.subjects.includes(selected)) select.value = selected;
   });
+}
+
+function renderEventOptions() {
+  const select = document.querySelector('#quiz-form [name="eventId"]');
+  const selected = select.value;
+  select.innerHTML = `<option value="">イベントに所属しない</option>${state.events
+    .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(event.title)}</option>`)
+    .join("")}`;
+  if (state.events.some((event) => event.id === selected)) select.value = selected;
 }
 
 function renderPeriodOptions(selectedValue) {
@@ -594,8 +604,9 @@ function renderGoalCard(goal) {
   const lap = Math.min(goal.laps, Math.floor(completed / goal.total) + 1);
   const status = completed >= total ? "完了" : `${lap}周目 / ${goal.laps}周`;
   const deadline = goal.deadline ? `期限 ${formatDate(goal.deadline)}` : "期限なし";
+  const submissionDate = goal.submissionDate ? ` ・ 提出 ${formatDate(goal.submissionDate)}` : "";
   return `<article class="goal-card">
-    <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}</p></div>
+    <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p></div>
       <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button" type="button" data-edit-goal="${escapeHtml(goal.id)}">編集</button><button class="text-button delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}">削除</button></div>
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
@@ -603,31 +614,51 @@ function renderGoalCard(goal) {
   </article>`;
 }
 
+function getScheduledQuizzes() {
+  const goalSubmissions = state.goals
+    .filter((goal) => goal.submissionDate)
+    .map((goal) => ({
+      sourceGoalId: goal.id,
+      kind: "submission",
+      title: goal.title,
+      subject: goal.subject,
+      date: goal.submissionDate,
+      scope: "長期計画の提出日",
+      period: null,
+      eventId: goal.eventId,
+    }));
+  return [...state.quizzes, ...goalSubmissions]
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.period || 99) - (b.period || 99));
+}
+
 function renderQuizzes() {
-  const quizzes = [...state.quizzes].sort((a, b) => a.date.localeCompare(b.date) || (a.period || 99) - (b.period || 99));
+  const quizzes = getScheduledQuizzes();
   elements.quizzesEmpty.hidden = quizzes.length > 0;
-  elements.quizzes.innerHTML = quizzes.map((quiz) => `<article class="quiz-card">
-    <div class="quiz-info">
-      <p class="card-title">${escapeHtml(quiz.title || "小テスト・提出物")}</p>
-      <p class="card-subtitle">${escapeHtml(quiz.scope || "範囲未設定")}${quiz.unit ? ` ${escapeHtml(quiz.unit)}` : ""}</p>
-      <div class="quiz-meta"><span>${formatDate(quiz.date, { month: "numeric", day: "numeric", weekday: "short" })}</span>${quiz.period ? `<strong>${quiz.period}<span>校時</span></strong>` : ""}<span class="badge">${escapeHtml(quiz.subject)}</span><span class="badge">${quiz.kind === "submission" ? "提出物" : "小テスト"}</span></div>
-    </div>
-    <div class="quiz-actions">
-      <button class="text-button" type="button" data-edit-quiz="${escapeHtml(quiz.id)}">編集</button>
-      <button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}"${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? " disabled" : ""}>${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? "ToDo作成済み" : "今日のToDoへ"}</button>
-      <button class="text-button" type="button" data-duplicate-quiz="${escapeHtml(quiz.id)}">複製</button>
-      <button class="text-button delete-button" type="button" data-delete-quiz="${escapeHtml(quiz.id)}">削除</button>
-    </div>
-  </article>`).join("");
+  elements.quizzes.innerHTML = quizzes.map((quiz) => {
+    const event = state.events.find((item) => item.id === quiz.eventId);
+    const actions = quiz.sourceGoalId
+      ? `<button class="text-button" type="button" data-edit-goal="${escapeHtml(quiz.sourceGoalId)}">長期計画を編集</button>`
+      : `<button class="text-button" type="button" data-edit-quiz="${escapeHtml(quiz.id)}">編集</button>
+         <button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}"${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? " disabled" : ""}>${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? "ToDo作成済み" : "今日のToDoへ"}</button>
+         <button class="text-button" type="button" data-duplicate-quiz="${escapeHtml(quiz.id)}">複製</button>
+         <button class="text-button delete-button" type="button" data-delete-quiz="${escapeHtml(quiz.id)}">削除</button>`;
+    return `<article class="quiz-card">
+      <div class="quiz-info">
+        <p class="card-title">${escapeHtml(quiz.title || "小テスト・提出物")}</p>
+        <p class="card-subtitle">${escapeHtml(quiz.scope || (quiz.sourceGoalId ? "長期計画の提出日" : "範囲未設定"))}${quiz.unit ? ` ${escapeHtml(quiz.unit)}` : ""}</p>
+        <div class="quiz-meta"><span>${formatDate(quiz.date, { month: "numeric", day: "numeric", weekday: "short" })}</span>${quiz.period ? `<strong>${quiz.period}<span>校時</span></strong>` : ""}<span class="badge">${escapeHtml(quiz.subject)}</span><span class="badge">${quiz.kind === "submission" ? "提出物" : "小テスト"}</span>${event ? `<span class="badge">${escapeHtml(event.title)}</span>` : ""}</div>
+      </div>
+      <div class="quiz-actions">${actions}</div>
+    </article>`;
+  }).join("");
 }
 
 function getSchedulesForDate(date) {
   const events = state.events
     .filter((event) => event.start && event.end && event.start <= date && event.end >= date)
     .map((event) => ({ kind: "event", event }));
-  const quizzes = state.quizzes
+  const quizzes = getScheduledQuizzes()
     .filter((quiz) => quiz.date === date)
-    .sort((a, b) => (a.period || 99) - (b.period || 99))
     .map((quiz) => ({ kind: "quiz", quiz }));
   return [...events, ...quizzes];
 }
@@ -713,7 +744,8 @@ function renderCalendarAgenda() {
     const scope = quiz.scope ? `範囲: ${escapeHtml(quiz.scope)}${quiz.unit ? ` ${escapeHtml(quiz.unit)}` : ""}` : "範囲未設定";
     const kind = quiz.kind === "submission" ? "提出物" : "小テスト";
     const period = quiz.period ? ` ・ ${quiz.period}校時` : "";
-    return `<article class="agenda-item agenda-quiz"><span class="agenda-kind">${kind}</span><p>${escapeHtml(quiz.subject)}${period} ・ ${escapeHtml(quiz.title || kind)} ・ ${scope}</p></article>`;
+    const event = state.events.find((item) => item.id === quiz.eventId);
+    return `<article class="agenda-item agenda-quiz"><span class="agenda-kind">${kind}</span><p>${escapeHtml(quiz.subject)}${period} ・ ${escapeHtml(quiz.title || kind)} ・ ${scope}${event ? ` ・ ${escapeHtml(event.title)}` : ""}</p></article>`;
   }).join("");
 }
 
@@ -772,9 +804,12 @@ function deleteEvent(eventId) {
   if (!event) return;
   const goalIds = new Set(state.goals.filter((goal) => goal.eventId === eventId).map((goal) => goal.id));
   const poolIds = new Set(state.pools.filter((pool) => pool.eventId === eventId || goalIds.has(pool.goalId)).map((pool) => pool.id));
-  if (!window.confirm(`「${event.title}」と、その長期計画・週間プール・関連する今日のToDoを削除します。この操作は取り消せません。`)) return;
+  if (!window.confirm(`「${event.title}」と、その長期計画・週間プール・関連する今日のToDoを削除し、提出物との関連付けを解除します。この操作は取り消せません。`)) return;
   state.events = state.events.filter((item) => item.id !== eventId);
   state.goals = state.goals.filter((goal) => !goalIds.has(goal.id));
+  state.quizzes.forEach((quiz) => {
+    if (quiz.eventId === eventId) quiz.eventId = "";
+  });
   state.pools = state.pools.filter((pool) => !poolIds.has(pool.id));
   state.tasks = state.tasks.filter((task) => !poolIds.has(task.poolId));
   saveState();
@@ -860,6 +895,8 @@ function setScheduleType(form, kind, selectedPeriod = form.elements.period.value
   period.required = isQuiz;
   period.disabled = !isQuiz;
   document.querySelector("#period-field").hidden = !isQuiz;
+  document.querySelector("#schedule-event-field").hidden = isQuiz;
+  if (isQuiz) form.elements.eventId.value = "";
   form.querySelectorAll("[data-schedule-type]").forEach((button) => {
     const selected = button.dataset.scheduleType === kind;
     button.classList.toggle("selected", selected);
@@ -963,6 +1000,7 @@ document.addEventListener("click", (event) => {
     form.elements.total.value = item.total;
     form.elements.laps.value = item.laps;
     form.elements.deadline.value = item.deadline || "";
+    form.elements.submissionDate.value = item.submissionDate || "";
     const parentEvent = state.events.find((eventItem) => eventItem.id === item.eventId);
     document.querySelector("#goal-event-title").textContent = `${parentEvent?.title || "イベント未設定"} の長期計画`;
     return;
@@ -979,6 +1017,7 @@ document.addEventListener("click", (event) => {
     form.elements.scope.value = item.scope || "";
     form.elements.unit.value = item.unit || "";
     form.elements.period.value = item.period ? String(item.period) : "";
+    form.elements.eventId.value = item.eventId || "";
     return;
   }
   const editPoolButton = event.target.closest("[data-edit-pool]");
@@ -1058,6 +1097,7 @@ document.addEventListener("click", (event) => {
     form.elements.scope.value = quiz.scope || "";
     form.elements.unit.value = quiz.unit || "";
     form.elements.period.value = quiz.period ? String(quiz.period) : "";
+    form.elements.eventId.value = quiz.eventId || "";
     document.querySelector("#quiz-dialog-title").textContent = "予定を複製";
     return;
   }
@@ -1171,16 +1211,18 @@ document.querySelector("#quiz-form").addEventListener("submit", (event) => {
   const date = String(data.get("date"));
   const scope = String(data.get("scope")).trim();
   const unit = String(data.get("unit")).trim();
+  const eventId = kind === "submission" ? String(data.get("eventId") || "") : "";
+  const associatedEvent = state.events.find((item) => item.id === eventId);
   const rawPeriod = String(data.get("period") || "");
   const period = rawPeriod ? Number(rawPeriod) : null;
   const editingQuiz = state.quizzes.find((quiz) => quiz.id === form.dataset.editId);
   const periodIsValid = period === null
     || (Number.isSafeInteger(period) && period >= 1 && (period <= state.settings.periodCount || period === editingQuiz?.period));
-  if (!["quiz", "submission"].includes(kind) || !title || !state.settings.subjects.includes(subject) || !date || !scope || (kind === "quiz" && period === null) || !periodIsValid) {
+  if (!["quiz", "submission"].includes(kind) || !title || !state.settings.subjects.includes(subject) || !date || !scope || (eventId && !associatedEvent) || (kind === "quiz" && period === null) || !periodIsValid) {
     showError(form, `タイトル・範囲・科目・日付を正しく入力してください。小テストは1〜${state.settings.periodCount}校時を指定してください。`);
     return;
   }
-  const updatedQuiz = { id: form.dataset.editId || createId(), kind, title, subject, date, scope, unit, period };
+  const updatedQuiz = { id: form.dataset.editId || createId(), kind, title, subject, date, scope, unit, period, eventId: associatedEvent?.id || "" };
   if (form.dataset.editId) {
     const index = state.quizzes.findIndex((quiz) => quiz.id === form.dataset.editId);
     if (index < 0) {
@@ -1257,6 +1299,7 @@ document.querySelector("#goal-form").addEventListener("submit", (event) => {
     laps: Number(data.get("laps")),
     completed: 0,
     deadline: String(data.get("deadline") || ""),
+    submissionDate: String(data.get("submissionDate") || ""),
   };
   if (!parentEvent || !state.settings.subjects.includes(goal.subject) || !goal.title || !goal.unit || !Number.isSafeInteger(goal.total) || goal.total < 1 || !Number.isSafeInteger(goal.laps) || goal.laps < 1) {
     showError(form, "イベント・科目を選択し、教材名・単位・量を正しく入力してください。");

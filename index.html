@@ -192,6 +192,11 @@
             <option value="" selected disabled>科目を選択してください</option>
           </select>
         </label>
+        <label id="schedule-event-field" hidden>イベント（任意）
+          <select name="eventId">
+            <option value="">イベントに所属しない</option>
+          </select>
+        </label>
         <label>日付<input name="date" type="date" required /></label>
         <label>範囲<input name="scope" placeholder="例：Lesson 3〜5 / p.20〜30" maxlength="120" required /></label>
         <label>範囲の単位 <span class="optional">(任意)</span><input name="unit" placeholder="例：ページ、問、語" maxlength="20" /></label>
@@ -227,6 +232,7 @@
           <label>目標周回数<input name="laps" type="number" min="1" step="1" value="1" required /></label>
           <label>期限日 <span class="optional">(任意)</span><input name="deadline" type="date" /></label>
         </div>
+        <label>提出日 <span class="optional">(任意)</span><input name="submissionDate" type="date" /></label>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">目標を保存</button></div>
       </form>
