@@ -1250,7 +1250,11 @@ function setScheduleType(form, kind, selectedPeriod = form.elements.period.value
 document.addEventListener("click", (event) => {
   if (event.target.closest(".brand")) {
     event.preventDefault();
-    window.location.reload();
+    elements.calendarView.hidden = true;
+    elements.recordingView.hidden = true;
+    document.body.classList.remove("recording-fullscreen");
+    elements.dashboard.hidden = !elements.authScreen.hidden;
+    window.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
   if (event.target.closest(".menu-button")) {
