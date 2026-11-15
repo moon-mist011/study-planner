@@ -963,7 +963,7 @@ function renderCalendar() {
       const heatLevel = studyHeatLevel(studySeconds);
       cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}${heatLevel ? ` study-level-${heatLevel}` : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}${studySeconds ? `、勉強時間${formatDuration(studySeconds)}` : ""}" aria-pressed="${selected}">
         <span class="calendar-day-number">${Number(date.slice(-2))}</span>
-        ${quizzes.slice(0, 2).map((quiz) => `<span class="calendar-marker quiz">${escapeHtml(quiz.subject)}${quiz.period ? ` ${quiz.period}校時` : ""} ${quiz.kind === "submission" ? "提出物" : "小テスト"}</span>`).join("")}
+        ${quizzes.slice(0, 2).map((quiz) => `<span class="calendar-marker quiz">${escapeHtml(quiz.subject)}${quiz.period ? ` ${quiz.period}校時` : ""} ${quiz.kind === "submission" ? `提出物${quiz.title ? ` ${escapeHtml(quiz.title)}` : ""}` : "小テスト"}</span>`).join("")}
         ${quizzes.length > 2 ? `<span class="calendar-marker-more">ほか${quizzes.length - 2}件</span>` : ""}
         ${studyMinutes ? `<span class="calendar-study-time" title="勉強時間 ${formatDuration(studySeconds)}">${formatCalendarDuration(studySeconds)}</span>` : ""}
       </button>`);
