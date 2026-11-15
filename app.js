@@ -26,10 +26,14 @@ const elements = {
   summary: document.querySelector("#today-summary"),
   tasks: document.querySelector("#today-list"),
   tasksEmpty: document.querySelector("#today-empty"),
+  pastTasks: document.querySelector("#past-task-list"),
+  pastTasksEmpty: document.querySelector("#past-task-empty"),
   events: document.querySelector("#event-list"),
   eventsEmpty: document.querySelector("#event-empty"),
   futureEvents: document.querySelector("#future-event-list"),
   futureEventsEmpty: document.querySelector("#future-event-empty"),
+  pastEvents: document.querySelector("#past-event-list"),
+  pastEventsEmpty: document.querySelector("#past-event-empty"),
   eventDialog: document.querySelector("#event-dialog"),
   quizzes: document.querySelector("#quiz-list"),
   quizzesEmpty: document.querySelector("#quiz-empty"),
@@ -52,7 +56,7 @@ const elements = {
   calendarAgendaEmpty: document.querySelector("#calendar-agenda-empty"),
 };
 
-const today = dateKey(new Date());
+let today = dateKey(new Date());
 let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCalendarDate = today;
 let state = emptyState();
@@ -526,48 +530,76 @@ function renderSummary() {
 }
 
 function renderTasks() {
-  const tasks = state.tasks.filter((task) => task.date === today);
-  elements.tasksEmpty.hidden = tasks.length > 0;
-  elements.tasks.innerHTML = tasks.map((task) => {
-    const pool = state.pools.find((item) => item.id === task.poolId);
-    const unit = pool?.unit || task.unit;
-    const title = pool?.title || task.title;
-    const subject = pool?.subject || task.subject || "科目未設定";
-    const completeLabel = task.completed ? "記録済み" : "実績を記録";
-      const recorded = task.actual || 0;
-      const achieved = recorded >= task.minimum;
-      const surplus = task.completed && achieved && recorded > task.minimum
-        ? `<span class="surplus">＋${recorded - task.minimum} ${escapeHtml(unit)} できた！</span>`
-      : "";
-      const shortfall = !task.completed && !achieved
-        ? `<span class="shortfall">あと ${task.minimum - recorded} ${escapeHtml(unit)}</span>`
-      : "";
-      const taskState = task.completed ? "完了" : achieved ? "最低達成・継続中" : recorded > 0 ? "記録あり" : "未着手";
-      const details = task.scope ? ` ・ 範囲: ${escapeHtml(task.scope)}${task.scopeUnit ? ` ${escapeHtml(task.scopeUnit)}` : ""}` : "";
-    return `<article class="task-card${task.completed ? " done" : ""}">
-      <div class="task-main"><p class="card-title">${escapeHtml(title)}</p>
-          <p class="task-detail">${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)}${details}</p>
-      </div>
-        <div class="task-actions"><button class="text-button" type="button" data-edit-task="${escapeHtml(task.id)}">編集</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
-    </article>`;
-  }).join("");
+  const visibleTasks = state.tasks
+    .filter((task) => task.date === today || (task.date < today && !task.completed))
+    .sort((a, b) => {
+      if ((a.date === today) !== (b.date === today)) return a.date === today ? -1 : 1;
+      return b.date.localeCompare(a.date);
+    });
+  const pastTasks = state.tasks
+    .filter((task) => task.date < today && task.completed)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  elements.tasksEmpty.hidden = visibleTasks.length > 0;
+  elements.tasks.innerHTML = visibleTasks.map((task) => renderTaskCard(task)).join("");
+  elements.pastTasksEmpty.hidden = pastTasks.length > 0;
+  elements.pastTasks.innerHTML = pastTasks.map((task) => renderTaskCard(task)).join("");
+}
+
+function renderTaskCard(task) {
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  const unit = pool?.unit || task.unit;
+  const title = pool?.title || task.title;
+  const subject = pool?.subject || task.subject || "科目未設定";
+  const completeLabel = task.completed ? "記録済み" : "実績を記録";
+  const recorded = task.actual || 0;
+  const achieved = recorded >= task.minimum;
+  const surplus = task.completed && achieved && recorded > task.minimum
+    ? `<span class="surplus">＋${recorded - task.minimum} ${escapeHtml(unit)} できた！</span>`
+    : "";
+  const shortfall = !task.completed && !achieved
+    ? `<span class="shortfall">あと ${task.minimum - recorded} ${escapeHtml(unit)}</span>`
+    : "";
+  const taskState = task.completed ? "完了" : achieved ? "最低達成・継続中" : recorded > 0 ? "記録あり" : "未着手";
+  const isPast = task.date < today;
+  const date = isPast ? `${formatDate(task.date, { month: "numeric", day: "numeric", weekday: "short" })} ・ ` : "";
+  const details = task.scope ? ` ・ 範囲: ${escapeHtml(task.scope)}${task.scopeUnit ? ` ${escapeHtml(task.scopeUnit)}` : ""}` : "";
+  return `<article class="task-card${task.completed ? " done" : ""}${isPast && !task.completed ? " past-uncompleted" : ""}">
+    <div class="task-main"><p class="card-title">${escapeHtml(title)}</p>
+        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)}${details}</p>
+    </div>
+      <div class="task-actions"><button class="text-button" type="button" data-edit-task="${escapeHtml(task.id)}">編集</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
+  </article>`;
 }
 
 function renderEvents() {
   const futureThreshold = dateKey(addMonths(new Date(), 2));
-  const currentEvents = state.events.filter((event) => !event.start || event.start < futureThreshold);
-  const futureEvents = state.events.filter((event) => event.start && event.start >= futureThreshold);
+  const pastEvents = state.events
+    .filter((event) => event.end && event.end < today)
+    .sort((a, b) => b.end.localeCompare(a.end));
+  const upcomingEvents = state.events.filter((event) => !event.end || event.end >= today);
+  const currentEvents = upcomingEvents.filter((event) => !event.start || event.start < futureThreshold);
+  const futureEvents = upcomingEvents.filter((event) => event.start && event.start >= futureThreshold);
   elements.eventsEmpty.hidden = currentEvents.length > 0;
   elements.futureEventsEmpty.hidden = futureEvents.length > 0;
+  elements.pastEventsEmpty.hidden = pastEvents.length > 0;
   elements.events.innerHTML = currentEvents.map(renderEventCard).join("");
   elements.futureEvents.innerHTML = futureEvents.map(renderEventCard).join("");
+  elements.pastEvents.innerHTML = pastEvents.map(renderEventCard).join("");
 }
 
 function scheduleEventRefresh() {
   const now = new Date();
   const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   window.setTimeout(() => {
-    renderEvents();
+    const previousToday = today;
+    const currentDate = dateKey(new Date());
+    today = currentDate;
+    if (selectedCalendarDate === previousToday) {
+      selectedCalendarDate = currentDate;
+      calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    }
+    render();
+    renderCalendar();
     scheduleEventRefresh();
   }, nextDay.getTime() - now.getTime() + 50);
 }
