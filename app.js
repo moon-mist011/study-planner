@@ -950,7 +950,7 @@ function renderGoalCard(goal) {
     ? ""
     : `<button class="text-button" type="button" data-add-pool="${escapeHtml(goal.id)}">＋ 週間プールに追加</button>`;
   return `<article class="goal-card">
-    <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p></div>
+    <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p>${goal.scope ? `<p class="card-subtitle">範囲: ${escapeHtml(goal.scope)}</p>` : ""}</div>
       <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(goal.id)}" aria-label="長期計画を編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}" aria-label="長期計画を削除" title="削除">🗑️</button></div>
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
@@ -1602,6 +1602,7 @@ document.addEventListener("click", (event) => {
     form.elements.eventId.value = item.eventId;
     form.elements.subject.value = item.subject;
     form.elements.title.value = item.title;
+    form.elements.scope.value = item.scope || "";
     form.elements.unit.value = item.unit;
     form.elements.total.value = item.total;
     form.elements.laps.value = item.laps;
@@ -1977,6 +1978,7 @@ goalForm.addEventListener("submit", (event) => {
     eventId: parentEvent?.id,
     subject: String(data.get("subject")),
     title: String(data.get("title")).trim(),
+    scope: String(data.get("scope") || "").trim(),
     unit: String(data.get("unit")).trim(),
     total: Number(data.get("total")),
     laps: Number(data.get("laps")),
@@ -2001,6 +2003,7 @@ goalForm.addEventListener("submit", (event) => {
       pool.title = goal.title;
       pool.subject = goal.subject;
       pool.unit = goal.unit;
+      if (!pool.sourceGoalId) pool.scope = goal.scope;
     });
     const submissionPool = state.pools.find((pool) => pool.sourceGoalId === goal.id);
     if (submissionPool && goal.submissionDate) {
@@ -2048,7 +2051,7 @@ document.querySelector("#pool-form").addEventListener("submit", (event) => {
   } else {
     state.pools.push({
       id: createId(), eventId: goal.eventId, goalId: goal.id, goalTitle: goal.title, title: goal.title, subject: goal.subject,
-      unit: goal.unit, start, end, target, completed: 0, status: "active",
+      unit: goal.unit, scope: goal.scope, start, end, target, completed: 0, status: "active",
     });
   }
   saveStateAndClose(elements.poolDialog, form);
