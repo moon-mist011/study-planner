@@ -95,6 +95,28 @@
           </div>
           <div class="card-list" id="quiz-list"></div>
           <p class="muted-empty" id="quiz-empty">タイトル・科目・日付・校時を登録すると、ここに予定が表示されます。</p>
+          <section class="mini-calendar" aria-label="ミニカレンダー">
+            <div class="mini-calendar-heading">
+              <button class="mini-calendar-title" type="button" data-open-mini-calendar>カレンダー <span aria-hidden="true">→</span></button>
+              <div class="mini-calendar-controls">
+                <button class="calendar-nav" type="button" data-mini-calendar-shift="-1" aria-label="前の月">‹</button>
+                <strong id="mini-calendar-month"></strong>
+                <button class="calendar-nav" type="button" data-mini-calendar-shift="1" aria-label="次の月">›</button>
+              </div>
+            </div>
+            <div class="calendar-weekdays mini-calendar-weekdays" aria-hidden="true">
+              <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+            </div>
+            <div class="mini-calendar-grid" id="mini-calendar-grid" role="grid" aria-label="月間カレンダー"></div>
+            <section class="mini-calendar-popover" id="mini-calendar-popover" aria-live="polite" hidden>
+              <div class="mini-calendar-popover-heading">
+                <h3 id="mini-calendar-agenda-title"></h3>
+                <button class="icon-button" type="button" data-mini-calendar-close aria-label="閉じる">×</button>
+              </div>
+              <div class="calendar-agenda-list" id="mini-calendar-agenda"></div>
+              <p class="muted-empty" id="mini-calendar-agenda-empty">この日の予定はありません。</p>
+            </section>
+          </section>
         </section>
 
         <section class="panel pools-panel" id="weekly-pools" aria-labelledby="pools-heading">

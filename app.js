@@ -62,6 +62,12 @@ const elements = {
   recordingEnd: document.querySelector("#recording-end"),
   calendarMonth: document.querySelector("#calendar-month"),
   calendarGrid: document.querySelector("#calendar-grid"),
+  miniCalendarMonth: document.querySelector("#mini-calendar-month"),
+  miniCalendarGrid: document.querySelector("#mini-calendar-grid"),
+  miniCalendarPopover: document.querySelector("#mini-calendar-popover"),
+  miniCalendarAgendaTitle: document.querySelector("#mini-calendar-agenda-title"),
+  miniCalendarAgenda: document.querySelector("#mini-calendar-agenda"),
+  miniCalendarAgendaEmpty: document.querySelector("#mini-calendar-agenda-empty"),
   calendarAgendaTitle: document.querySelector("#calendar-agenda-title"),
   calendarAgenda: document.querySelector("#calendar-agenda-list"),
   calendarAgendaEmpty: document.querySelector("#calendar-agenda-empty"),
@@ -73,6 +79,7 @@ const elements = {
 let today = dateKeyInJst(new Date());
 let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCalendarDate = today;
+let miniCalendarSelectedDate = "";
 let calendarRenderedMinute = -1;
 let state = emptyState();
 let pendingTaskRecord = null;
@@ -544,6 +551,7 @@ function render() {
   renderTasks();
   renderEvents();
   renderQuizzes();
+  renderMiniCalendar();
   renderPools();
   renderSummary();
   renderPoolOptions();
@@ -1015,6 +1023,70 @@ function getSchedulesForDate(date) {
   return [...events, ...quizzes];
 }
 
+function renderMiniCalendar() {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  elements.miniCalendarMonth.textContent = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long" }).format(calendarMonth);
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthStart = dateKey(new Date(year, month, 1));
+  const monthEnd = dateKey(new Date(year, month, daysInMonth));
+  const weekCount = Math.ceil((firstWeekday + daysInMonth) / 7);
+  const weeks = [];
+  for (let weekIndex = 0; weekIndex < weekCount; weekIndex += 1) {
+    const weekStart = shiftDate(monthStart, weekIndex * 7 - firstWeekday);
+    const weekEnd = shiftDate(weekStart, 6);
+    const cells = [];
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      const date = shiftDate(weekStart, weekday);
+      if (date < monthStart || date > monthEnd) {
+        cells.push('<span class="mini-calendar-cell mini-calendar-cell-empty" role="presentation"></span>');
+        continue;
+      }
+      const isToday = date === today;
+      const selected = date === miniCalendarSelectedDate;
+      cells.push(`<button class="mini-calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}" type="button" role="gridcell" data-mini-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}" aria-pressed="${selected}">
+        <span>${Number(date.slice(-2))}</span>
+      </button>`);
+    }
+
+    const overlappingEvents = state.events
+      .filter((item) => item.start && item.end && item.start <= weekEnd && item.end >= weekStart && item.start <= monthEnd && item.end >= monthStart)
+      .map((item) => ({
+        event: item,
+        start: item.start > weekStart ? item.start : weekStart,
+        end: item.end < weekEnd ? item.end : weekEnd,
+      }))
+      .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.event.title.localeCompare(b.event.title));
+    const laneEnds = [];
+    const bands = overlappingEvents.map(({ event: item, start, end }) => {
+      let lane = laneEnds.findIndex((laneEnd) => laneEnd < start);
+      if (lane < 0) lane = laneEnds.length;
+      laneEnds[lane] = end;
+      const startColumn = new Date(`${start}T00:00:00`).getDay() + 1;
+      const endColumn = new Date(`${end}T00:00:00`).getDay() + 2;
+      const classes = [
+        "calendar-event-band",
+        item.start === start ? "is-event-start" : "",
+        item.end === end ? "is-event-end" : "",
+      ].filter(Boolean).join(" ");
+      return `<span class="${classes}" style="grid-column:${startColumn}/${endColumn};grid-row:${lane + 1}" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>`;
+    }).join("");
+    weeks.push(`<section class="mini-calendar-week" style="--mini-event-space:${laneEnds.length * 13}px">
+      <div class="mini-calendar-days">${cells.join("")}</div>
+      <div class="mini-calendar-event-layer" aria-hidden="true">${bands}</div>
+    </section>`);
+  }
+  elements.miniCalendarGrid.innerHTML = weeks.join("");
+  elements.miniCalendarPopover.hidden = !miniCalendarSelectedDate;
+  if (miniCalendarSelectedDate) {
+    elements.miniCalendarAgendaTitle.textContent = formatDate(miniCalendarSelectedDate, { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+    const schedules = getSchedulesForDate(miniCalendarSelectedDate);
+    elements.miniCalendarAgenda.innerHTML = renderCalendarAgendaItems(schedules);
+    elements.miniCalendarAgendaEmpty.hidden = schedules.length > 0;
+  }
+}
+
 function renderCalendar() {
   calendarRenderedMinute = Math.floor(Date.now() / 60000);
   const year = calendarMonth.getFullYear();
@@ -1093,17 +1165,7 @@ function renderCalendarAgenda() {
   const schedules = getSchedulesForDate(date);
   elements.calendarAgendaTitle.textContent = formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" });
   elements.calendarAgendaEmpty.hidden = schedules.length > 0;
-  elements.calendarAgenda.innerHTML = schedules.map((schedule) => {
-    if (schedule.kind === "event") {
-      return `<article class="agenda-item agenda-event"><span class="agenda-kind">イベント</span><strong>${escapeHtml(schedule.event.title)}</strong></article>`;
-    }
-    const quiz = schedule.quiz;
-    const scope = quiz.scope ? `範囲: ${escapeHtml(quiz.scope)}${quiz.unit ? ` ${escapeHtml(quiz.unit)}` : ""}` : "範囲未設定";
-    const kind = quiz.kind === "submission" ? "提出物" : "小テスト";
-    const period = quiz.period ? ` ・ ${quiz.period}校時` : "";
-    const event = state.events.find((item) => item.id === quiz.eventId);
-    return `<article class="agenda-item agenda-quiz"><span class="agenda-kind">${kind}</span><p>${escapeHtml(quiz.subject)}${period} ・ ${escapeHtml(quiz.title || kind)} ・ ${scope}${event ? ` ・ ${escapeHtml(event.title)}` : ""}</p></article>`;
-  }).join("");
+  elements.calendarAgenda.innerHTML = renderCalendarAgendaItems(schedules);
   const groupedStudyTasks = new Map();
   state.tasks.forEach((task) => {
     const { seconds, amount } = getTaskStudyRecordOnDate(task, date);
@@ -1127,6 +1189,20 @@ function renderCalendarAgenda() {
     const recordedAmount = amount > 0 ? `実績 ${amount} ${pool?.unit || task.unit || ""}` : "実績なし";
     const recording = tasks.some((item) => item.date === date && state.studyTimer?.taskId === item.id && state.studyTimer.startedAt);
     return `<article class="calendar-study-item"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subject)} ・ ${escapeHtml(recordedAmount)}</span></div><div class="calendar-study-actions"><time>${formatDuration(seconds)}</time><button class="text-button icon-action delete-button" type="button" data-delete-study-record="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の勉強記録を削除" title="${recording ? "計測中は削除できません" : "削除"}"${recording ? " disabled" : ""}>🗑️</button></div></article>`;
+  }).join("");
+}
+
+function renderCalendarAgendaItems(schedules) {
+  return schedules.map((schedule) => {
+    if (schedule.kind === "event") {
+      return `<article class="agenda-item agenda-event"><span class="agenda-kind">イベント</span><strong>${escapeHtml(schedule.event.title)}</strong></article>`;
+    }
+    const quiz = schedule.quiz;
+    const scope = quiz.scope ? `範囲: ${escapeHtml(quiz.scope)}${quiz.unit ? ` ${escapeHtml(quiz.unit)}` : ""}` : "範囲未設定";
+    const kind = quiz.kind === "submission" ? "提出物" : "小テスト";
+    const period = quiz.period ? ` ・ ${quiz.period}校時` : "";
+    const event = state.events.find((item) => item.id === quiz.eventId);
+    return `<article class="agenda-item agenda-quiz"><span class="agenda-kind">${kind}</span><p>${escapeHtml(quiz.subject)}${period} ・ ${escapeHtml(quiz.title || kind)} ・ ${scope}${event ? ` ・ ${escapeHtml(event.title)}` : ""}</p></article>`;
   }).join("");
 }
 
@@ -1412,6 +1488,8 @@ document.addEventListener("click", (event) => {
     elements.recordingView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = !elements.authScreen.hidden;
+    miniCalendarSelectedDate = "";
+    renderMiniCalendar();
     window.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
@@ -1504,6 +1582,8 @@ document.addEventListener("click", (event) => {
     elements.recordingView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = false;
+    miniCalendarSelectedDate = "";
+    renderMiniCalendar();
     window.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
@@ -1512,7 +1592,38 @@ document.addEventListener("click", (event) => {
     elements.recordingView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = false;
+    miniCalendarSelectedDate = "";
+    renderMiniCalendar();
     window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  if (event.target.closest("[data-open-mini-calendar]")) {
+    selectedCalendarDate = miniCalendarSelectedDate
+      || dateKey(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1));
+    renderCalendar();
+    elements.dashboard.hidden = true;
+    elements.recordingView.hidden = true;
+    document.body.classList.remove("recording-fullscreen");
+    elements.calendarView.hidden = false;
+    window.scrollTo({ top: 0 });
+    return;
+  }
+  const miniCalendarShift = event.target.closest("[data-mini-calendar-shift]");
+  if (miniCalendarShift) {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + Number(miniCalendarShift.dataset.miniCalendarShift), 1);
+    miniCalendarSelectedDate = "";
+    renderMiniCalendar();
+    return;
+  }
+  if (event.target.closest("[data-mini-calendar-close]")) {
+    miniCalendarSelectedDate = "";
+    renderMiniCalendar();
+    return;
+  }
+  const miniCalendarDay = event.target.closest("[data-mini-calendar-date]");
+  if (miniCalendarDay) {
+    miniCalendarSelectedDate = miniCalendarDay.dataset.miniCalendarDate;
+    renderMiniCalendar();
     return;
   }
   const calendarShift = event.target.closest("[data-calendar-shift]");
