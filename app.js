@@ -781,6 +781,10 @@ function renderTaskCard(task) {
   const unit = pool?.unit || task.unit;
   const title = pool?.title || task.title;
   const subject = pool?.subject || task.subject || "科目未設定";
+  const canReturn = canReturnTaskToPool(task);
+  const returnButton = canReturn
+    ? `<button class="text-button icon-action" type="button" data-return-task="${escapeHtml(task.id)}" aria-label="週間プールへ戻す" title="${hasTaskProgress(task) ? "実績や勉強記録があるToDoは戻せません" : "週間プールへ戻す"}"${hasTaskProgress(task) ? " disabled" : ""}>↩️</button>`
+    : "";
   const completeLabel = task.completed ? "記録済み" : "実績を記録";
   const recorded = task.actual || 0;
   const achieved = recorded >= task.minimum;
@@ -798,7 +802,7 @@ function renderTaskCard(task) {
     <div class="task-main"><p class="card-title">${escapeHtml(title)}</p>
         <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(getTaskStudySeconds(task))}${details}</p>
     </div>
-      <div class="task-actions"><button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
+      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
   </article>`;
 }
 
@@ -942,13 +946,16 @@ function renderGoalCard(goal) {
     ? `提出期限 ${formatDate(goal.deadline)}`
     : goal.deadline ? `期限 ${formatDate(goal.deadline)}` : "期限なし";
   const submissionDate = goal.submissionDate && !datesMatch ? ` ・ 提出 ${formatDate(goal.submissionDate)}` : "";
+  const poolButton = state.pools.some((pool) => pool.goalId === goal.id && pool.status === "active")
+    ? ""
+    : `<button class="text-button" type="button" data-add-pool="${escapeHtml(goal.id)}">＋ 週間プールに追加</button>`;
   return `<article class="goal-card">
     <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p></div>
       <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(goal.id)}" aria-label="長期計画を編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}" aria-label="長期計画を削除" title="削除">🗑️</button></div>
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
     <div class="progress-meta"><span>${completed} / ${total} ${escapeHtml(goal.unit)}</span><span>${percent}%</span></div>
-    <div class="goal-pool-action"><button class="text-button" type="button" data-add-pool="${escapeHtml(goal.id)}">＋ 週間プールに追加</button></div>
+    ${poolButton ? `<div class="goal-pool-action">${poolButton}</div>` : ""}
   </article>`;
 }
 
@@ -976,6 +983,7 @@ function renderQuizzes() {
     const event = state.events.find((item) => item.id === quiz.eventId);
     const matchingPool = findSchedulePool(quiz);
     const completedTask = isScheduleComplete(quiz);
+    const hasTodayTask = state.tasks.some((task) => task.quizId === quiz.id && task.date === today);
     const poolButton = matchingPool || completedTask
       ? ""
       : `<button class="text-button" type="button" data-add-schedule-pool="${escapeHtml(quiz.sourceGoalId || quiz.id)}" data-schedule-source="${quiz.sourceGoalId ? "goal" : "quiz"}">週間プールへ</button>`;
@@ -983,7 +991,7 @@ function renderQuizzes() {
       ? `${poolButton}<button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(quiz.sourceGoalId)}" aria-label="長期計画を編集" title="編集">✏️</button>`
       : `<button class="text-button icon-action" type="button" data-edit-quiz="${escapeHtml(quiz.id)}" aria-label="予定を編集" title="編集">✏️</button>
          ${poolButton}
-         <button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}"${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? " disabled" : ""}>${state.tasks.some((task) => task.quizId === quiz.id && task.date === today) ? "ToDo作成済み" : "今日のToDoへ"}</button>
+         ${hasTodayTask ? "" : `<button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}">今日のToDoへ</button>`}
          <button class="text-button icon-action" type="button" data-duplicate-quiz="${escapeHtml(quiz.id)}" aria-label="予定を複製" title="複製">📑</button>
          <button class="text-button icon-action delete-button" type="button" data-delete-quiz="${escapeHtml(quiz.id)}" aria-label="予定を削除" title="削除">🗑️</button>`;
     return `<article class="quiz-card${completedTask ? " completed" : ""}">
@@ -1141,6 +1149,32 @@ function getStudyTaskGroupKey(task) {
   return task.poolId || task.quizId || task.id;
 }
 
+function hasTaskProgress(task) {
+  return task.completed || Number(task.actual || 0) > 0 || Number(task.studySeconds || 0) > 0
+    || (task.studyLogs || []).length > 0
+    || (state.studyTimer?.taskId === task.id
+      && (state.studyTimer.hasStarted || state.studyTimer.startedAt || Number(state.studyTimer.elapsedSeconds || 0) > 0));
+}
+
+function canReturnTaskToPool(task) {
+  if (task.poolId) {
+    const pool = state.pools.find((item) => item.id === task.poolId);
+    return pool?.status === "active";
+  }
+  if (!task.quizId) return false;
+  const quiz = state.quizzes.find((item) => item.id === task.quizId);
+  if (!quiz) return false;
+  const pool = findSchedulePool(quiz);
+  return !pool || pool.status === "active";
+}
+
+function getPoolReturnDestination(pool) {
+  if (pool.sourceQuizId) {
+    return state.quizzes.some((quiz) => quiz.id === pool.sourceQuizId) ? "予定" : "";
+  }
+  return state.goals.some((goal) => goal.id === pool.goalId) ? "長期計画" : "";
+}
+
 function renderPools() {
   elements.poolsEmpty.hidden = state.pools.length > 0;
   const pools = [...state.pools].sort((a, b) => a.start.localeCompare(b.start));
@@ -1148,8 +1182,16 @@ function renderPools() {
     const remaining = Math.max(0, pool.target - pool.completed);
     const percent = pool.target ? Math.min(100, Math.round(pool.completed / pool.target * 100)) : 0;
     const active = pool.status === "active";
+    const returnDestination = getPoolReturnDestination(pool);
+    const poolTasks = state.tasks.filter((task) => task.poolId === pool.id);
+    const hasProgress = Number(pool.completed || 0) > 0 || poolTasks.some(hasTaskProgress);
+    const returnButton = active && returnDestination
+      ? `<button class="text-button icon-action" type="button" data-return-pool="${escapeHtml(pool.id)}" aria-label="${returnDestination}へ戻す" title="${hasProgress ? "実績や勉強記録がある週間プールは戻せません" : `${returnDestination}へ戻す`}"${hasProgress ? " disabled" : ""}>↩️</button>`
+      : "";
+    const hasTodayTask = state.tasks.some((task) => task.date === today
+      && (task.poolId === pool.id || (pool.sourceQuizId && task.quizId === pool.sourceQuizId)));
     const buttons = active
-      ? `<button class="text-button" type="button" data-add-task="${escapeHtml(pool.id)}">＋ 今日のToDoへ</button>
+      ? `${hasTodayTask ? "" : `<button class="text-button" type="button" data-add-task="${escapeHtml(pool.id)}">＋ 今日のToDoへ</button>`}
          <button class="text-button" type="button" data-carry-pool="${escapeHtml(pool.id)}"${remaining === 0 ? " disabled" : ""}>残りを繰り越す</button>`
       : `<span class="badge">終了</span>`;
     const poolDescription = pool.scope
@@ -1162,7 +1204,7 @@ function renderPools() {
       </div>
       <div class="progress-track" role="progressbar" aria-label="${escapeHtml(pool.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
       <div class="progress-meta"><span>${pool.completed} / ${pool.target} ${escapeHtml(pool.unit)} 完了</span><span>${percent}%</span></div>
-      <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions"><button class="text-button icon-action" type="button" data-edit-pool="${escapeHtml(pool.id)}" aria-label="週間プールを編集" title="編集">✏️</button>${buttons}</div></div>
+      <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-pool="${escapeHtml(pool.id)}" aria-label="週間プールを編集" title="編集">✏️</button>${buttons}</div></div>
     </article>`;
   }).join("");
 }
@@ -1731,7 +1773,17 @@ document.addEventListener("click", (event) => {
     return;
   }
   const carryButton = event.target.closest("[data-carry-pool]");
-  if (carryButton) carryPool(carryButton.dataset.carryPool);
+  if (carryButton) {
+    carryPool(carryButton.dataset.carryPool);
+    return;
+  }
+  const returnTaskButton = event.target.closest("[data-return-task]");
+  if (returnTaskButton) {
+    returnTaskToPool(returnTaskButton.dataset.returnTask);
+    return;
+  }
+  const returnPoolButton = event.target.closest("[data-return-pool]");
+  if (returnPoolButton) returnPoolToSource(returnPoolButton.dataset.returnPool);
 });
 
 document.querySelectorAll(".quick-amounts").forEach((group) => {
@@ -2114,6 +2166,43 @@ function carryPool(poolId) {
     completed: 0,
     status: "active",
   });
+  saveState();
+}
+
+function returnTaskToPool(taskId) {
+  const task = state.tasks.find((item) => item.id === taskId);
+  if (!task || hasTaskProgress(task)) return;
+  let schedule;
+  let pool;
+  if (task.poolId) {
+    pool = state.pools.find((item) => item.id === task.poolId);
+    if (!pool || pool.status !== "active") return;
+  } else if (task.quizId) {
+    schedule = state.quizzes.find((item) => item.id === task.quizId);
+    if (!schedule) return;
+    pool = findSchedulePool(schedule);
+    if (pool && pool.status !== "active") return;
+  } else {
+    return;
+  }
+  const destination = pool ? "既存の週間プール" : "週間プール";
+  if (!window.confirm(`「${task.title}」を今日のToDoから${destination}に戻します。ToDoは削除されます。よろしいですか？`)) return;
+  if (!pool && schedule && !createSchedulePool(schedule)) return;
+  if (state.studyTimer?.taskId === task.id) state.studyTimer = null;
+  state.tasks = state.tasks.filter((item) => item.id !== task.id);
+  saveState();
+}
+
+function returnPoolToSource(poolId) {
+  const pool = state.pools.find((item) => item.id === poolId);
+  const returnDestination = pool && getPoolReturnDestination(pool);
+  if (!pool || pool.status !== "active" || !returnDestination) return;
+  const poolTasks = state.tasks.filter((task) => task.poolId === pool.id);
+  if (Number(pool.completed || 0) > 0 || poolTasks.some(hasTaskProgress)) return;
+  if (!window.confirm(`「${pool.title}」を週間プールから${returnDestination}へ戻します。関連する実績のないToDoも削除されます。よろしいですか？`)) return;
+  if (poolTasks.some((task) => task.id === state.studyTimer?.taskId)) state.studyTimer = null;
+  state.tasks = state.tasks.filter((task) => task.poolId !== pool.id);
+  state.pools = state.pools.filter((item) => item.id !== pool.id);
   saveState();
 }
 
