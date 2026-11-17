@@ -739,12 +739,22 @@ function updateSettingsSubjectMoveButtons() {
 function getTaskSubjectOrder(task) {
   const pool = state.pools.find((item) => item.id === task.poolId);
   const subject = pool?.subject || task.subject;
+  return getSubjectOrder(subject);
+}
+
+function getSubjectOrder(subject) {
   const index = state.settings.subjects.indexOf(subject);
   return index < 0 ? state.settings.subjects.length : index;
 }
 
 function compareTasksByDeadlineAndSubject(a, b) {
   return b.date.localeCompare(a.date) || getTaskSubjectOrder(a) - getTaskSubjectOrder(b);
+}
+
+function compareGoalsByDeadlineAndSubject(a, b) {
+  const dateA = a.deadline || a.submissionDate || "9999-12-31";
+  const dateB = b.deadline || b.submissionDate || "9999-12-31";
+  return dateA.localeCompare(dateB) || getSubjectOrder(a.subject) - getSubjectOrder(b.subject);
 }
 
 function renderSummary() {
@@ -798,8 +808,14 @@ function renderEvents() {
     .filter((event) => event.end && event.end < today)
     .sort((a, b) => b.end.localeCompare(a.end));
   const upcomingEvents = state.events.filter((event) => !event.end || event.end >= today);
-  const currentEvents = upcomingEvents.filter((event) => !event.start || event.start < futureThreshold);
-  const futureEvents = upcomingEvents.filter((event) => event.start && event.start >= futureThreshold);
+  const compareUpcomingEvents = (a, b) => (a.start || "9999-12-31").localeCompare(b.start || "9999-12-31")
+    || (a.end || "9999-12-31").localeCompare(b.end || "9999-12-31");
+  const currentEvents = upcomingEvents
+    .filter((event) => !event.start || event.start < futureThreshold)
+    .sort(compareUpcomingEvents);
+  const futureEvents = upcomingEvents
+    .filter((event) => event.start && event.start >= futureThreshold)
+    .sort(compareUpcomingEvents);
   elements.eventsEmpty.hidden = currentEvents.length > 0;
   elements.futureEventsEmpty.hidden = futureEvents.length > 0;
   elements.pastEventsEmpty.hidden = pastEvents.length > 0;
@@ -889,7 +905,9 @@ function moveDueSchedulesToPools() {
 }
 
 function renderEventCard(event) {
-  const eventGoals = state.goals.filter((goal) => goal.eventId === event.id);
+  const eventGoals = state.goals
+    .filter((goal) => goal.eventId === event.id)
+    .sort(compareGoalsByDeadlineAndSubject);
   const typeLabel = {
     holiday: "長期休暇",
     regular_exam: "定期試験",
