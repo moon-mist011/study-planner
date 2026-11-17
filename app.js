@@ -1071,10 +1071,17 @@ function renderMiniCalendar() {
         item.end === end ? "is-event-end" : "",
       ].filter(Boolean).join(" ");
       return `<span class="${classes}" style="grid-column:${startColumn}/${endColumn};grid-row:${lane + 1}" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>`;
-    }).join("");
-    weeks.push(`<section class="mini-calendar-week" style="--mini-event-space:${laneEnds.length * 13}px">
+    });
+    const submissionDates = new Set(getScheduledQuizzes()
+      .filter((quiz) => quiz.kind === "submission" && quiz.date >= weekStart && quiz.date <= weekEnd && quiz.date >= monthStart && quiz.date <= monthEnd)
+      .map((quiz) => quiz.date));
+    const submissionBands = [...submissionDates].map((date) => {
+      const column = new Date(`${date}T00:00:00`).getDay() + 1;
+      return `<span class="mini-calendar-submission-band" style="grid-column:${column};grid-row:${laneEnds.length + 1}" title="提出物あり"></span>`;
+    });
+    weeks.push(`<section class="mini-calendar-week" style="--mini-event-space:${(laneEnds.length + (submissionDates.size ? 1 : 0)) * 13}px">
       <div class="mini-calendar-days">${cells.join("")}</div>
-      <div class="mini-calendar-event-layer" aria-hidden="true">${bands}</div>
+      <div class="mini-calendar-event-layer" aria-hidden="true">${bands.join("")}${submissionBands.join("")}</div>
     </section>`);
   }
   elements.miniCalendarGrid.innerHTML = weeks.join("");
