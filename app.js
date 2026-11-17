@@ -627,7 +627,9 @@ function renderRecording() {
   const showingTaskSelect = selectingRecordingTask || !task;
   elements.recordingTaskSelect.hidden = !showingTaskSelect;
   elements.recordingSession.hidden = showingTaskSelect;
-  const todayTasks = state.tasks.filter((item) => item.date === today);
+  const todayTasks = state.tasks
+    .filter((item) => item.date === today)
+    .sort(compareTasksByDeadlineAndSubject);
   elements.recordingTaskList.innerHTML = todayTasks.map((item) => {
     const pool = state.pools.find((poolItem) => poolItem.id === item.poolId);
     const title = pool?.title || item.title;
@@ -710,6 +712,8 @@ function renderPeriodOptions(selectedValue) {
 function settingsSubjectRow(subject = "", originalSubject = "") {
   return `<div class="settings-subject-row" data-original-subject="${escapeHtml(originalSubject)}">
     <input type="text" name="subject" value="${escapeHtml(subject)}" maxlength="${MAX_SUBJECT_LENGTH}" aria-label="科目名" required />
+    <button class="text-button icon-action" type="button" data-move-setting-subject="-1" aria-label="科目を上へ移動" title="上へ">↑</button>
+    <button class="text-button icon-action" type="button" data-move-setting-subject="1" aria-label="科目を下へ移動" title="下へ">↓</button>
     <button class="text-button icon-action delete-button" type="button" data-remove-setting-subject aria-label="${subject ? `${escapeHtml(subject)}を削除` : "科目を削除"}" title="削除">🗑️</button>
   </div>`;
 }
@@ -721,6 +725,26 @@ function renderSettingsForm() {
     .map((subject) => settingsSubjectRow(subject, subject))
     .join("");
   form.querySelector("[data-add-setting-subject]").disabled = state.settings.subjects.length >= MAX_SUBJECTS;
+  updateSettingsSubjectMoveButtons();
+}
+
+function updateSettingsSubjectMoveButtons() {
+  const rows = [...elements.settingsSubjects.querySelectorAll(".settings-subject-row")];
+  rows.forEach((row, index) => {
+    row.querySelector('[data-move-setting-subject="-1"]').disabled = index === 0;
+    row.querySelector('[data-move-setting-subject="1"]').disabled = index === rows.length - 1;
+  });
+}
+
+function getTaskSubjectOrder(task) {
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  const subject = pool?.subject || task.subject;
+  const index = state.settings.subjects.indexOf(subject);
+  return index < 0 ? state.settings.subjects.length : index;
+}
+
+function compareTasksByDeadlineAndSubject(a, b) {
+  return b.date.localeCompare(a.date) || getTaskSubjectOrder(a) - getTaskSubjectOrder(b);
 }
 
 function renderSummary() {
@@ -732,13 +756,10 @@ function renderSummary() {
 function renderTasks() {
   const visibleTasks = state.tasks
     .filter((task) => !task.completed && (task.date === today || task.date < today))
-    .sort((a, b) => {
-      if ((a.date === today) !== (b.date === today)) return a.date === today ? -1 : 1;
-      return b.date.localeCompare(a.date);
-    });
+    .sort(compareTasksByDeadlineAndSubject);
   const pastTasks = state.tasks
     .filter((task) => task.completed)
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort(compareTasksByDeadlineAndSubject);
   elements.tasksEmpty.hidden = visibleTasks.length > 0;
   elements.tasks.innerHTML = visibleTasks.map((task) => renderTaskCard(task)).join("");
   elements.pastTasksEmpty.hidden = pastTasks.length > 0;
@@ -898,8 +919,11 @@ function renderGoalCard(goal) {
   const percent = total ? Math.round((completed / total) * 100) : 0;
   const lap = Math.min(goal.laps, Math.floor(completed / goal.total) + 1);
   const status = completed >= total ? "完了" : `${lap}周目 / ${goal.laps}周`;
-  const deadline = goal.deadline ? `期限 ${formatDate(goal.deadline)}` : "期限なし";
-  const submissionDate = goal.submissionDate ? ` ・ 提出 ${formatDate(goal.submissionDate)}` : "";
+  const datesMatch = goal.deadline && goal.deadline === goal.submissionDate;
+  const deadline = datesMatch
+    ? `提出期限 ${formatDate(goal.deadline)}`
+    : goal.deadline ? `期限 ${formatDate(goal.deadline)}` : "期限なし";
+  const submissionDate = goal.submissionDate && !datesMatch ? ` ・ 提出 ${formatDate(goal.submissionDate)}` : "";
   return `<article class="goal-card">
     <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p></div>
       <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(goal.id)}" aria-label="長期計画を編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}" aria-label="長期計画を削除" title="削除">🗑️</button></div>
@@ -1248,6 +1272,7 @@ function openDialog(dialog) {
       submit.dataset.defaultText ||= submit.textContent;
       submit.textContent = submit.dataset.defaultText;
     }
+    if (dialog === elements.goalDialog) delete form.dataset.deadlineAutoFilled;
   }
   if (form) showError(form, "");
   if (dialog === elements.completeDialog) {
@@ -1258,7 +1283,7 @@ function openDialog(dialog) {
   }
   if (dialog === elements.studyLogDialog) {
     const taskSelect = form.elements.taskId;
-    const studyTasks = [...state.tasks].sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+    const studyTasks = [...state.tasks].sort((a, b) => compareTasksByDeadlineAndSubject(a, b) || a.title.localeCompare(b.title));
     taskSelect.innerHTML = `<option value="" selected disabled>${studyTasks.length ? "タスクを選択してください" : "記録できるタスクがありません"}</option>${studyTasks
       .map((task) => {
         const pool = state.pools.find((item) => item.id === task.poolId);
@@ -1464,13 +1489,27 @@ document.addEventListener("click", (event) => {
     if (rows.length >= MAX_SUBJECTS) return;
     elements.settingsSubjects.insertAdjacentHTML("beforeend", settingsSubjectRow());
     elements.settingsDialog.querySelector("[data-add-setting-subject]").disabled = rows.length + 1 >= MAX_SUBJECTS;
+    updateSettingsSubjectMoveButtons();
     elements.settingsSubjects.querySelector(".settings-subject-row:last-child input").focus();
+    return;
+  }
+  const moveSettingSubject = event.target.closest("[data-move-setting-subject]");
+  if (moveSettingSubject) {
+    const rows = [...elements.settingsSubjects.querySelectorAll(".settings-subject-row")];
+    const row = moveSettingSubject.closest(".settings-subject-row");
+    const index = rows.indexOf(row);
+    const targetIndex = index + Number(moveSettingSubject.dataset.moveSettingSubject);
+    if (targetIndex < 0 || targetIndex >= rows.length) return;
+    if (targetIndex < index) elements.settingsSubjects.insertBefore(row, rows[targetIndex]);
+    else elements.settingsSubjects.insertBefore(rows[targetIndex], row);
+    updateSettingsSubjectMoveButtons();
     return;
   }
   const removeSettingSubject = event.target.closest("[data-remove-setting-subject]");
   if (removeSettingSubject) {
     removeSettingSubject.closest(".settings-subject-row").remove();
     elements.settingsDialog.querySelector("[data-add-setting-subject]").disabled = false;
+    updateSettingsSubjectMoveButtons();
     return;
   }
   const openButton = event.target.closest("[data-open-dialog]");
@@ -1737,6 +1776,22 @@ document.querySelector("#settings-form").addEventListener("submit", (event) => {
   }
 });
 
+const goalForm = document.querySelector("#goal-form");
+goalForm.elements.submissionDate.addEventListener("input", () => {
+  const submissionDate = goalForm.elements.submissionDate.value;
+  const deadline = goalForm.elements.deadline;
+  if (submissionDate && (!deadline.value || goalForm.dataset.deadlineAutoFilled === "true")) {
+    deadline.value = submissionDate;
+    goalForm.dataset.deadlineAutoFilled = "true";
+  } else if (!submissionDate && goalForm.dataset.deadlineAutoFilled === "true") {
+    deadline.value = "";
+    delete goalForm.dataset.deadlineAutoFilled;
+  }
+});
+goalForm.elements.deadline.addEventListener("input", () => {
+  delete goalForm.dataset.deadlineAutoFilled;
+});
+
 document.querySelector("#quiz-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -1841,7 +1896,7 @@ eventForm.addEventListener("submit", (event) => {
   saveStateAndClose(elements.eventDialog, form);
 });
 
-document.querySelector("#goal-form").addEventListener("submit", (event) => {
+goalForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   if (!form.reportValidity()) return;
