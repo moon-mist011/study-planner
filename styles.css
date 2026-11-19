@@ -280,6 +280,13 @@ button.calendar-cell:hover { background: #f7faf6; }
 .quick-amounts { display: flex; gap: 8px; margin-top: -6px; }
 .quick-amounts button { min-width: 52px; height: 30px; border: 1px solid #dce9df; border-radius: 7px; color: var(--green); background: #f3f8f3; font-size: 10px; font-weight: 600; }
 .quick-amounts button:hover { background: #e8f3ea; }
+.carry-overdue-list { display: grid; gap: 10px; }
+.carry-overdue-row { display: grid !important; grid-template-columns: minmax(0, 1fr) 150px; gap: 12px; align-items: center; }
+.carry-overdue-row > span:first-child { display: grid; gap: 3px; }
+.carry-overdue-row small { color: #829089; font-size: 10px; }
+.carry-overdue-amount { display: grid; gap: 6px; }
+.carry-overdue-quick { margin: 0; }
+.carry-overdue-quick button { min-width: 0; flex: 1; }
 
 @media (max-width: 700px) {
   .topbar { height: 58px; padding: 0 18px; }
@@ -321,6 +328,7 @@ button.calendar-cell:hover { background: #f7faf6; }
   .event-heading { align-items: flex-start; flex-direction: column; }
   .event-actions { width: 100%; justify-content: flex-end; }
   .event-goals { margin-top: 10px; padding-top: 10px; }
+  .carry-overdue-row { grid-template-columns: 1fr; }
   .pool-card .card-footer { align-items: flex-start; flex-direction: column; }
   .pool-actions { justify-content: flex-start; }
 }

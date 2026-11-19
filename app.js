@@ -26,6 +26,7 @@ const elements = {
   summary: document.querySelector("#today-summary"),
   tasks: document.querySelector("#today-list"),
   tasksEmpty: document.querySelector("#today-empty"),
+  carryOverdueTasks: document.querySelector("#carry-overdue-tasks"),
   pastTasks: document.querySelector("#past-task-list"),
   pastTasksEmpty: document.querySelector("#past-task-empty"),
   events: document.querySelector("#event-list"),
@@ -44,6 +45,7 @@ const elements = {
   poolDialog: document.querySelector("#pool-dialog"),
   taskDialog: document.querySelector("#task-dialog"),
   completeDialog: document.querySelector("#complete-dialog"),
+  carryOverdueDialog: document.querySelector("#carry-overdue-dialog"),
   studyLogDialog: document.querySelector("#study-log-dialog"),
   settingsDialog: document.querySelector("#settings-dialog"),
   settingsSubjects: document.querySelector("#settings-subject-list"),
@@ -515,6 +517,10 @@ elements.retrySyncButton.addEventListener("click", () => {
   queueCloudWrite(user, firestoreStateRef, JSON.parse(JSON.stringify(state)), updatedAt);
 });
 
+elements.carryOverdueTasks.addEventListener("click", () => {
+  openCarryOverdueDialog();
+});
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     "&": "&amp;",
@@ -778,6 +784,11 @@ function renderTasks() {
   const pastTasks = state.tasks
     .filter((task) => task.completed)
     .sort(compareTasksByDeadlineAndSubject);
+  const overdueTasks = visibleTasks.filter((task) => task.date < today);
+  elements.carryOverdueTasks.hidden = overdueTasks.length === 0;
+  elements.carryOverdueTasks.textContent = overdueTasks.length
+    ? `今日に繰り越す（${overdueTasks.length}件）`
+    : "今日に繰り越す";
   elements.tasksEmpty.hidden = visibleTasks.length > 0;
   elements.tasks.innerHTML = visibleTasks.map((task) => renderTaskCard(task)).join("");
   elements.pastTasksEmpty.hidden = pastTasks.length > 0;
@@ -806,11 +817,14 @@ function renderTaskCard(task) {
   const isPast = task.date < today;
   const date = isPast ? `${formatDate(task.date, { month: "numeric", day: "numeric", weekday: "short" })} ・ ` : "";
   const details = task.scope ? ` ・ 範囲: ${escapeHtml(task.scope)}${task.scopeUnit ? ` ${escapeHtml(task.scopeUnit)}` : ""}` : "";
+  const carryButton = isPast && !task.completed
+    ? `<button class="text-button" type="button" data-carry-overdue-task="${escapeHtml(task.id)}">今日に繰り越す</button>`
+    : "";
   return `<article class="task-card${task.completed ? " done" : ""}${isPast && !task.completed ? " past-uncompleted" : ""}">
     <div class="task-main"><p class="card-title">${escapeHtml(title)}</p>
         <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(getTaskStudySeconds(task))}${details}</p>
     </div>
-      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${surplus}${shortfall}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
+      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${surplus}${shortfall}${carryButton}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
   </article>`;
 }
 
@@ -1489,6 +1503,13 @@ function setScheduleType(form, kind, selectedPeriod = form.elements.period.value
 }
 
 document.addEventListener("click", (event) => {
+  const carryAddButton = event.target.closest("[data-carry-add]");
+  if (carryAddButton) {
+    const row = carryAddButton.closest(".carry-overdue-row");
+    const input = row?.querySelector("[data-carry-task]");
+    if (input) input.value = Math.max(1, Number(input.value || 0) + Number(carryAddButton.dataset.carryAdd));
+    return;
+  }
   if (event.target.closest(".brand")) {
     event.preventDefault();
     elements.calendarView.hidden = true;
@@ -1865,6 +1886,11 @@ document.addEventListener("click", (event) => {
     document.querySelector("#task-pool-title").textContent = `${pool.title}（${pool.unit}）`;
     openDialog(elements.taskDialog);
     form.elements.poolId.value = pool.id;
+    return;
+  }
+  const carryOverdueTaskButton = event.target.closest("[data-carry-overdue-task]");
+  if (carryOverdueTaskButton) {
+    openCarryOverdueDialog([carryOverdueTaskButton.dataset.carryOverdueTask]);
     return;
   }
   const completeButton = event.target.closest("[data-complete-task]");
@@ -2269,6 +2295,76 @@ function commitTaskRecord(taskId, amount, complete) {
 elements.completeDialog.addEventListener("close", () => {
   pendingTaskRecord = null;
   recordingEndTaskId = null;
+});
+
+function openCarryOverdueDialog(taskIds) {
+  const overdueTasks = state.tasks.filter((task) =>
+    !task.completed
+    && task.date < today
+    && (!taskIds || taskIds.includes(task.id)));
+  if (!overdueTasks.length) return;
+
+  const list = document.querySelector("#carry-overdue-list");
+  list.innerHTML = overdueTasks.map((task) => {
+    const pool = state.pools.find((item) => item.id === task.poolId);
+    const unit = pool?.unit || task.unit || "";
+    const title = pool?.title || task.title || "タスク";
+    const shortfall = Math.max(0, Number(task.minimum || 0) - Number(task.actual || 0));
+    const defaultMinimum = shortfall > 0 ? shortfall : 1;
+    return `<label class="carry-overdue-row">
+      <span><strong>${escapeHtml(title)}</strong><small>未達分 ${shortfall} ${escapeHtml(unit)}</small></span>
+      <span class="carry-overdue-amount">
+        <input type="number" name="carry-${escapeHtml(task.id)}" data-carry-task="${escapeHtml(task.id)}" min="1" step="1" value="${defaultMinimum}" required />
+        <span class="quick-amounts carry-overdue-quick">
+          <button type="button" data-carry-add="1">＋1</button>
+          <button type="button" data-carry-add="5">＋5</button>
+          <button type="button" data-carry-add="10">＋10</button>
+        </span>
+      </span>
+    </label>`;
+  }).join("");
+  openDialog(elements.carryOverdueDialog);
+}
+
+function carryOverdueTasksToToday() {
+  const form = document.querySelector("#carry-overdue-form");
+  const inputs = [...form.querySelectorAll("[data-carry-task]")];
+  if (!inputs.length) return;
+
+  for (const input of inputs) {
+    const minimum = Number(input.value);
+    if (!Number.isSafeInteger(minimum) || minimum < 1) {
+      showError(form, "今日の最低量を1以上の整数で入力してください。");
+      return;
+    }
+  }
+
+  inputs.forEach((input) => {
+    const task = state.tasks.find((item) => item.id === input.dataset.carryTask);
+    if (!task || task.completed || task.date >= today) return;
+    const minimum = Number(input.value);
+    const existingTodayTask = state.tasks.find((item) =>
+      item.id !== task.id
+      && item.date === today
+      && !item.completed
+      && (task.poolId ? item.poolId === task.poolId : task.quizId && item.quizId === task.quizId));
+
+    if (existingTodayTask) {
+      existingTodayTask.minimum += minimum;
+      state.tasks = state.tasks.filter((item) => item.id !== task.id);
+      return;
+    }
+
+    task.date = today;
+    task.actual = 0;
+    task.minimum = minimum;
+  });
+  saveStateAndClose(elements.carryOverdueDialog, form);
+}
+
+document.querySelector("#carry-overdue-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  carryOverdueTasksToToday();
 });
 
 function carryPool(poolId) {

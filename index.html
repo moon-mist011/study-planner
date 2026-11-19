@@ -48,6 +48,7 @@
           </div>
           <div class="today-heading-meta">
             <span class="section-date" id="today-label"></span>
+            <button class="button button-secondary button-small" id="carry-overdue-tasks" type="button" hidden>今日に繰り越す</button>
             <div class="welcome-stats" id="today-summary" aria-live="polite"></div>
           </div>
         </div>
@@ -384,6 +385,22 @@
         </div>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions" id="task-record-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">実績を記録</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="carry-overdue-dialog" class="modal">
+      <form id="carry-overdue-form">
+        <div class="modal-heading">
+          <div><p class="eyebrow">CARRY OVER</p><h2>今日の最低量を記録</h2></div>
+          <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
+        </div>
+        <p class="modal-description">未達分がデフォルト入力されています。必要なら量を増やして今日の最低量にできます。</p>
+        <div id="carry-overdue-list" class="carry-overdue-list"></div>
+        <p class="form-error" aria-live="polite"></p>
+        <div class="modal-actions">
+          <button class="button button-quiet" type="button" data-close-dialog>キャンセル</button>
+          <button class="button button-primary" type="submit">今日に繰り越す</button>
+        </div>
       </form>
     </dialog>
 
