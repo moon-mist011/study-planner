@@ -2475,7 +2475,14 @@ document.querySelector("#carry-pool-form").addEventListener("submit", (event) =>
 });
 
 function formatDetailDate(value) {
-  return value ? formatDate(value, { year: "numeric", month: "long", day: "numeric" }) : "未設定";
+  return value ? formatDate(value, { year: "numeric", month: "long", day: "numeric" }) : "";
+}
+
+function formatDetailDateRange(start, end) {
+  const formattedStart = formatDetailDate(start);
+  const formattedEnd = formatDetailDate(end);
+  if (formattedStart && formattedEnd) return `${formattedStart} 〜 ${formattedEnd}`;
+  return formattedStart || formattedEnd;
 }
 
 function formatDetailDuration(seconds) {
@@ -2505,11 +2512,11 @@ function openTaskDetails(task) {
   const studyLogs = (task.studyLogs || []).map((log) =>
     `${formatDetailDate(log.date)}：勉強 ${formatDetailDuration(log.seconds)}、実施量 ${log.amount} ${unit}`.trim());
   const details = [
-    { label: "タスク名", value: pool?.title || task.title || "未設定" },
-    { label: "科目", value: pool?.subject || task.subject || "未設定" },
+    { label: "タスク名", value: pool?.title || task.title || "" },
+    { label: "科目", value: pool?.subject || task.subject || "" },
     { label: "取り組む日", value: formatDetailDate(task.date) },
     { label: "状態", value: status },
-    { label: "今日の最低量", value: `${task.minimum || 0} ${unit}`.trim() },
+    { label: "今日の最低量", value: task.minimum == null ? "" : `${task.minimum} ${unit}`.trim() },
     { label: "実績量", value: `${recorded} ${unit}`.trim() },
   ];
   const scope = task.scope || pool?.scope;
@@ -2518,7 +2525,7 @@ function openTaskDetails(task) {
   if (pool?.goalTitle) details.push({ label: "長期計画", value: pool.goalTitle });
   details.push(
     { label: "勉強時間", value: formatDetailDuration(getTaskStudySeconds(task)) },
-    { label: "メモ", value: task.memo || "メモなし" },
+    { label: "メモ", value: task.memo || "" },
   );
   if (studyLogs.length) details.push({ label: "勉強記録の内訳", value: studyLogs.join("\n") });
   openRecordDetails("タスクの詳細", details);
@@ -2527,31 +2534,29 @@ function openTaskDetails(task) {
 function openPoolDetails(pool) {
   const completed = Number(pool.completed || 0);
   const remaining = Math.max(0, Number(pool.target || 0) - completed);
+  const hasTarget = pool.target !== undefined && pool.target !== null;
   const details = [
-    { label: "タスク名", value: pool.title || "未設定" },
-    { label: "科目", value: pool.subject || "未設定" },
-    { label: "範囲", value: pool.scope || pool.goalTitle || "未設定" },
-    { label: "期間", value: `${formatDetailDate(pool.start)} 〜 ${formatDetailDate(pool.end)}` },
-    { label: "進捗", value: `${completed} / ${pool.target} ${pool.unit || ""}`.trim() },
-    { label: "残り", value: `${remaining} ${pool.unit || ""}`.trim() },
-    { label: "状態", value: pool.status === "active" ? "進行中" : "終了" },
+    { label: "タスク名", value: pool.title || "" },
+    { label: "科目", value: pool.subject || "" },
+    { label: "範囲", value: pool.scope || pool.goalTitle || "" },
+    { label: "期間", value: formatDetailDateRange(pool.start, pool.end) },
+    { label: "進捗", value: hasTarget ? `${completed} / ${pool.target} ${pool.unit || ""}`.trim() : "" },
+    { label: "残り", value: hasTarget ? `${remaining} ${pool.unit || ""}`.trim() : "" },
+    { label: "状態", value: pool.status ? (pool.status === "active" ? "進行中" : "終了") : "" },
   ];
   if (pool.deadline) details.push({ label: "提出日", value: formatDetailDate(pool.deadline) });
-  details.push({ label: "メモ", value: pool.memo || "メモなし" });
+  details.push({ label: "メモ", value: pool.memo || "" });
   openRecordDetails("週間プールの詳細", details);
 }
 
 function openEventDetails(event) {
   const goals = state.goals.filter((goal) => goal.eventId === event.id);
-  const eventDates = event.start && event.end
-    ? `${formatDetailDate(event.start)} 〜 ${formatDetailDate(event.end)}`
-    : "日程未設定";
   openRecordDetails("イベントの詳細", [
-    { label: "イベント名", value: event.title || "未設定" },
-    { label: "種類", value: getEventTypeLabel(event.type) },
-    { label: "期間", value: eventDates },
-    { label: "長期計画", value: goals.length ? goals.map((goal) => goal.title).join("\n") : "登録なし" },
-    { label: "メモ", value: event.memo || "メモなし" },
+    { label: "イベント名", value: event.title || "" },
+    { label: "種類", value: event.type ? getEventTypeLabel(event.type) : "" },
+    { label: "期間", value: formatDetailDateRange(event.start, event.end) },
+    { label: "長期計画", value: goals.map((goal) => goal.title).filter(Boolean).join("\n") },
+    { label: "メモ", value: event.memo || "" },
   ]);
 }
 
@@ -2560,28 +2565,30 @@ function openGoalDetails(goal) {
   const completed = goalProgress(goal);
   const total = goal.total * goal.laps;
   const deadlineLabel = goal.deadline && goal.deadline === goal.submissionDate ? "提出期限" : "期限";
+  const hasTotal = goal.total != null && goal.laps != null && Number.isFinite(total);
   const details = [
-    { label: "計画名", value: goal.title || "未設定" },
-    { label: "イベント", value: event?.title || "未設定" },
-    { label: "科目", value: goal.subject || "未設定" },
-    { label: "範囲", value: goal.scope || "未設定" },
-    { label: "単位", value: goal.unit || "未設定" },
-    { label: "1周あたり", value: `${goal.total} ${goal.unit || ""}`.trim() },
-    { label: "目標周回数", value: `${goal.laps} 周` },
-    { label: "全体の目標量", value: `${total} ${goal.unit || ""}`.trim() },
-    { label: "進捗", value: `${completed} / ${total} ${goal.unit || ""}`.trim() },
-    { label: deadlineLabel, value: goal.deadline ? formatDetailDate(goal.deadline) : "期限なし" },
+    { label: "計画名", value: goal.title || "" },
+    { label: "イベント", value: event?.title || "" },
+    { label: "科目", value: goal.subject || "" },
+    { label: "範囲", value: goal.scope || "" },
+    { label: "単位", value: goal.unit || "" },
+    { label: "1周あたり", value: goal.total == null ? "" : `${goal.total} ${goal.unit || ""}`.trim() },
+    { label: "目標周回数", value: goal.laps == null ? "" : `${goal.laps} 周` },
+    { label: "全体の目標量", value: hasTotal ? `${total} ${goal.unit || ""}`.trim() : "" },
+    { label: "進捗", value: hasTotal ? `${completed} / ${total} ${goal.unit || ""}`.trim() : "" },
+    { label: deadlineLabel, value: formatDetailDate(goal.deadline) },
   ];
   if (goal.submissionDate && goal.submissionDate !== goal.deadline) {
     details.push({ label: "提出日", value: formatDetailDate(goal.submissionDate) });
   }
-  details.push({ label: "メモ", value: goal.memo || "メモなし" });
+  details.push({ label: "メモ", value: goal.memo || "" });
   openRecordDetails("長期計画の詳細", details);
 }
 
 function openRecordDetails(title, details) {
   document.querySelector("#task-details-title").textContent = title;
   document.querySelector("#task-details-content").innerHTML = details
+    .filter(({ value }) => value !== "" && value !== null && value !== undefined)
     .map(({ label, value }) => `<div class="record-detail-row"><dt>${escapeHtml(label)}</dt><dd><pre>${escapeHtml(value)}</pre></dd></div>`)
     .join("");
   elements.taskDetailsDialog.showModal();
