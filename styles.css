@@ -121,6 +121,8 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .detail-title:hover { color: var(--green); text-decoration: underline; }
 .detail-title:focus-visible { border-radius: 3px; outline: 2px solid #75ad87; outline-offset: 3px; }
 .card-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+.goal-date-meta { display: flex; flex-wrap: wrap; gap: 0 10px; }
+.goal-date-meta span { white-space: nowrap; }
 .badge { flex: 0 0 auto; padding: 4px 8px; color: #5b7767; background: #eff5ef; border-radius: 99px; font-size: 9px; }
 .badge.complete { color: #5a7d65; background: #eaf5ec; }
 .progress-track { height: 6px; margin: 14px 0 7px; overflow: hidden; background: #eff2ee; border-radius: 9px; }
@@ -179,6 +181,12 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .recording-content { width: min(760px, 100%); text-align: center; }
 .recording-content .eyebrow, .recording-select-content .eyebrow { color: #93a198; }
 .recording-task-title { margin: 0 0 14px; color: var(--green-dark); font-size: clamp(20px, 4vw, 30px); line-height: 1.4; overflow-wrap: anywhere; }
+.recording-task-title-button { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; line-height: inherit; text-align: center; overflow-wrap: anywhere; }
+.recording-task-title-button:hover { color: var(--green); text-decoration: underline; }
+.recording-task-title-button:focus-visible { border-radius: 4px; outline: 2px solid #75ad87; outline-offset: 4px; }
+.recording-memo-field { display: grid; width: min(560px, 100%); gap: 7px; margin: 0 auto 14px; color: #64736a; text-align: left; font-size: 11px; font-weight: 600; }
+.recording-memo-field textarea { width: 100%; min-height: 76px; padding: 10px 11px; border: 1px solid #dfe5df; border-radius: 9px; outline: none; color: var(--ink); background: rgba(255,255,255,.92); font-size: 12px; font-weight: 400; line-height: 1.6; resize: vertical; }
+.recording-memo-field textarea:focus { border-color: #75ad87; box-shadow: 0 0 0 3px #e9f4eb; }
 .recording-elapsed { display: block; color: var(--ink); font-size: clamp(58px, 18vw, 148px); font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: -.07em; line-height: 1.15; }
 .recording-clock { display: block; margin-top: 15px; color: #839087; font-size: clamp(16px, 3vw, 21px); font-variant-numeric: tabular-nums; letter-spacing: .08em; }
 .recording-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 28px; }
@@ -345,6 +353,9 @@ button.calendar-cell:hover { background: #f7faf6; }
   .event-goals { margin-top: 10px; padding-top: 10px; }
   .carry-overdue-row { grid-template-columns: 1fr; }
   .record-detail-row { grid-template-columns: 1fr; gap: 5px; }
+  .goal-date-meta { display: block; }
+  .goal-date-meta span { display: block; }
+  .goal-date-meta span + span { margin-top: 3px; }
   .pool-card .card-footer { align-items: flex-start; flex-direction: column; }
   .pool-actions { justify-content: flex-start; }
 }

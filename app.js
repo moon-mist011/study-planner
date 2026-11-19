@@ -60,6 +60,7 @@ const elements = {
   recordingTaskEmpty: document.querySelector("#recording-task-empty"),
   recordingSession: document.querySelector("#recording-session"),
   recordingTaskTitle: document.querySelector("#recording-task-title"),
+  recordingTaskMemo: document.querySelector("#recording-task-memo"),
   recordingElapsed: document.querySelector("#recording-elapsed"),
   recordingClock: document.querySelector("#recording-clock"),
   recordingStart: document.querySelector("#recording-start"),
@@ -679,11 +680,16 @@ function renderRecording() {
   }).join("");
   elements.recordingTaskEmpty.hidden = todayTasks.length > 0;
   if (!task || showingTaskSelect) {
+    elements.recordingTaskMemo.value = "";
+    elements.recordingTaskMemo.closest(".recording-memo-field").hidden = true;
     renderRecordingClock();
     return;
   }
   const pool = state.pools.find((item) => item.id === task.poolId);
-  elements.recordingTaskTitle.textContent = pool?.title || task.title;
+  const title = pool?.title || task.title;
+  elements.recordingTaskTitle.innerHTML = `<button class="recording-task-title-button" type="button" data-recording-task-details="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の詳細を表示">${escapeHtml(title)}</button>`;
+  elements.recordingTaskMemo.closest(".recording-memo-field").hidden = false;
+  elements.recordingTaskMemo.value = task.memo || "";
   elements.recordingElapsed.textContent = formatDuration(getRecordingElapsedSeconds());
   elements.recordingStart.hidden = Boolean(state.studyTimer.startedAt);
   elements.recordingStart.textContent = state.studyTimer.elapsedSeconds ? "記録を再開" : "記録開始";
@@ -691,6 +697,13 @@ function renderRecording() {
   elements.recordingEnd.hidden = !state.studyTimer.hasStarted;
   renderRecordingClock();
 }
+
+elements.recordingTaskMemo.addEventListener("input", () => {
+  const task = getRecordingTask();
+  if (!task) return;
+  task.memo = elements.recordingTaskMemo.value.slice(0, 2000);
+  saveState({ deferRender: true });
+});
 
 function openRecordingView() {
   selectingRecordingTask = !getRecordingTask();
@@ -840,7 +853,6 @@ function renderTaskCard(task) {
   const taskState = task.completed ? "完了" : achieved ? "最低達成・継続中" : recorded > 0 ? "記録あり" : "未着手";
   const isPast = task.date < today;
   const date = isPast ? `${formatDate(task.date, { month: "numeric", day: "numeric", weekday: "short" })} ・ ` : "";
-  const details = task.scope ? ` ・ 範囲: ${escapeHtml(task.scope)}${task.scopeUnit ? ` ${escapeHtml(task.scopeUnit)}` : ""}` : "";
   const carryButton = isPast && !task.completed
     ? `<button class="text-button" type="button" data-carry-overdue-task="${escapeHtml(task.id)}">今日に繰り越す</button>`
     : "";
@@ -848,7 +860,7 @@ function renderTaskCard(task) {
     <div class="task-card-summary">
       <div class="task-main">
         <button class="card-title detail-title" type="button" data-task-details="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の詳細を表示">${escapeHtml(title)}</button>
-        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(getTaskStudySeconds(task))}${details}</p>
+        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(getTaskStudySeconds(task))}</p>
       </div>
       ${(surplus || shortfall) ? `<div class="task-remainder">${surplus}${shortfall}</div>` : ""}
     </div>
@@ -1009,7 +1021,7 @@ function renderGoalCard(goal) {
     ? ""
     : `<button class="text-button" type="button" data-add-pool="${escapeHtml(goal.id)}">＋ 週間プールに追加</button>`;
   return `<article class="goal-card">
-    <div class="card-top"><div><button class="card-title detail-title" type="button" data-goal-details="${escapeHtml(goal.id)}" aria-label="${escapeHtml(goal.title)}の詳細を表示">${escapeHtml(goal.title)}</button><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p>${goal.scope ? `<p class="card-subtitle">範囲: ${escapeHtml(goal.scope)}</p>` : ""}</div>
+    <div class="card-top"><div><button class="card-title detail-title" type="button" data-goal-details="${escapeHtml(goal.id)}" aria-label="${escapeHtml(goal.title)}の詳細を表示">${escapeHtml(goal.title)}</button><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周</p><p class="card-subtitle goal-date-meta"><span>${deadline}</span>${submissionDate ? `<span>${submissionDate.replace(/^ ・ /, "")}</span>` : ""}</p>${goal.scope ? `<p class="card-subtitle">範囲: ${escapeHtml(goal.scope)}</p>` : ""}</div>
       <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(goal.id)}" aria-label="長期計画を編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}" aria-label="長期計画を削除" title="削除">🗑️</button></div>
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
@@ -1612,6 +1624,12 @@ document.addEventListener("click", (event) => {
     const title = pool?.title || task.title;
     document.querySelector("#complete-task-title").textContent = `${title} — 計測 ${formatDuration(elapsedSeconds)} ・ 最低 ${task.minimum} ${pool?.unit || task.unit}`;
     elements.completeDialog.querySelector(".modal-heading h2").textContent = "勉強記録を終了";
+    return;
+  }
+  const recordingDetailsButton = event.target.closest("[data-recording-task-details]");
+  if (recordingDetailsButton) {
+    const task = state.tasks.find((item) => item.id === recordingDetailsButton.dataset.recordingTaskDetails);
+    if (task) openTaskDetails(task);
     return;
   }
   const recordingTaskButton = event.target.closest("[data-record-task]");
