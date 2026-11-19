@@ -363,6 +363,7 @@ function getAccountLoadErrorMessage(error) {
 async function loadUserState(user) {
   const generation = ++authLoadGeneration;
   let loadStage = "Firestoreのドキュメント参照を作成";
+  let taskProgressReconciled = false;
   currentUser = user;
   firestoreStateRef = null;
   state = emptyState();
@@ -408,6 +409,10 @@ async function loadUserState(user) {
       }
     }
 
+    taskProgressReconciled = state.pools.reduce(
+      (changed, pool) => syncTaskProgress(pool.id) || changed,
+      false,
+    );
     loadStage = "端末にユーザーデータを一時保存";
     firestoreStateRef = stateRef;
     try {
@@ -420,6 +425,7 @@ async function loadUserState(user) {
       loadStage = "初回データをFirestoreに保存";
       await writeCloudState(stateRef, state, cloudWriteAt);
       clearPendingWrite(user.uid, cloudWriteAt);
+      taskProgressReconciled = false;
       if (legacyDataPendingMigration) {
         removeLegacyData();
         legacyDataPendingMigration = false;
@@ -442,7 +448,7 @@ async function loadUserState(user) {
   if (generation !== authLoadGeneration) return;
   setAuthenticatedView(true);
   setAuthMessage("同期済み");
-  if (moveDueSchedulesToPools()) saveState();
+  if (moveDueSchedulesToPools() || taskProgressReconciled) saveState();
   else render();
 }
 
@@ -1401,6 +1407,7 @@ function deleteStudyRecord(taskId, date) {
   const title = state.pools.find((pool) => pool.id === selectedTask.poolId)?.title || selectedTask.title;
   if (!window.confirm(`「${title}」の${formatDate(date, { year: "numeric", month: "long", day: "numeric" })}の勉強記録を削除します。この日の勉強時間と実施量が削除され、週間プール・長期目標の進捗も戻ります。この操作は取り消せません。`)) return;
 
+  const affectedPoolIds = new Set();
   tasks.forEach((task) => {
     const logs = task.studyLogs || [];
     const loggedAmount = logs
@@ -1415,18 +1422,14 @@ function deleteStudyRecord(taskId, date) {
     if (amountToRemove > 0) {
       task.actual = Math.max(0, Number(task.actual || 0) - amountToRemove);
       if (task.actual < task.minimum) task.completed = false;
-      const pool = state.pools.find((item) => item.id === task.poolId);
-      if (pool) {
-        pool.completed = Math.max(0, Number(pool.completed || 0) - amountToRemove);
-        const goal = state.goals.find((item) => item.id === pool.goalId);
-        if (goal) goal.completed = Math.max(0, Number(goal.completed || 0) - amountToRemove);
-      }
+      if (task.poolId) affectedPoolIds.add(task.poolId);
     }
     if (state.studyTimer?.taskId === task.id && !state.studyTimer.startedAt) {
       state.studyTimer.elapsedSeconds = 0;
       state.studyTimer.hasStarted = false;
     }
   });
+  affectedPoolIds.forEach(syncTaskProgress);
   saveState();
 }
 
@@ -2302,7 +2305,7 @@ document.querySelector("#complete-form").addEventListener("submit", (event) => {
     return;
   }
   if (task.completed) {
-    task.actual = (task.actual || 0) + actual;
+    addTaskActual(task, actual);
     recordingEndTaskId = null;
     saveStateAndClose(elements.completeDialog, form);
     return;
@@ -2341,11 +2344,32 @@ document.querySelector("#study-log-form").addEventListener("submit", (event) => 
 
 function addTaskActual(task, amount) {
   task.actual = (task.actual || 0) + amount;
-  const pool = state.pools.find((item) => item.id === task.poolId);
-  if (!pool) return;
-  pool.completed += amount;
+  if (task.poolId) syncTaskProgress(task.poolId);
+}
+
+function syncTaskProgress(poolId) {
+  const pool = state.pools.find((item) => item.id === poolId);
+  if (!pool) return false;
   const goal = state.goals.find((item) => item.id === pool.goalId);
-  if (goal) goal.completed = Math.min(goal.total * goal.laps, goal.completed + amount);
+  const relatedPools = goal
+    ? state.pools.filter((item) => item.goalId === goal.id)
+    : [pool];
+  let changed = false;
+  relatedPools.forEach((item) => {
+    const completed = state.tasks
+      .filter((task) => task.poolId === item.id)
+      .reduce((total, task) => total + Number(task.actual || 0), 0);
+    if (item.completed !== completed) changed = true;
+    item.completed = completed;
+  });
+  if (goal) {
+    const goalCompleted = relatedPools
+      .reduce((total, item) => total + Number(item.completed || 0), 0);
+    const cappedGoalCompleted = Math.min(goal.total * goal.laps, goalCompleted);
+    if (goal.completed !== cappedGoalCompleted) changed = true;
+    goal.completed = cappedGoalCompleted;
+  }
+  return changed;
 }
 
 function commitTaskRecord(taskId, amount, complete) {
