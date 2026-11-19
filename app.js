@@ -2390,6 +2390,20 @@ function openCarryOverdueDialog(taskIds) {
   openDialog(elements.carryOverdueDialog);
 }
 
+function archiveTaskRecord(task) {
+  task.studyLogs ||= [];
+  const loggedAmount = task.studyLogs.reduce((total, log) => total + Number(log.amount || 0), 0);
+  const legacyAmount = Math.max(0, Number(task.actual || 0) - loggedAmount);
+  if ((task.studySeconds || 0) > 0 || legacyAmount > 0) {
+    task.studyLogs.push({
+      date: task.date,
+      seconds: task.studySeconds || 0,
+      amount: legacyAmount,
+    });
+  }
+  task.studySeconds = 0;
+}
+
 function carryOverdueTasksToToday() {
   const form = document.querySelector("#carry-overdue-form");
   const inputs = [...form.querySelectorAll("[data-carry-task]")];
@@ -2406,6 +2420,12 @@ function carryOverdueTasksToToday() {
   inputs.forEach((input) => {
     const task = state.tasks.find((item) => item.id === input.dataset.carryTask);
     if (!task || task.completed || task.date >= today) return;
+    if (state.studyTimer?.taskId === task.id) {
+      addRunningTimeToTask(state.studyTimer, Date.now());
+      state.studyTimer = null;
+    }
+    const archivedAmount = Number(task.actual || 0);
+    archiveTaskRecord(task);
     const minimum = Number(input.value);
     const memo = form.querySelector(`[data-carry-memo="${CSS.escape(input.dataset.carryTask)}"]`)?.value.trim() || "";
     const existingTodayTask = state.tasks.find((item) =>
@@ -2416,13 +2436,16 @@ function carryOverdueTasksToToday() {
 
     if (existingTodayTask) {
       existingTodayTask.minimum += minimum;
+      existingTodayTask.actual = (existingTodayTask.actual || 0) + archivedAmount;
+      existingTodayTask.studyLogs ||= [];
+      existingTodayTask.studyLogs.push(...(task.studyLogs || []));
       existingTodayTask.memo = [existingTodayTask.memo, memo].filter((value, index, values) => value && values.indexOf(value) === index).join("\n");
+      existingTodayTask.completed = existingTodayTask.actual >= existingTodayTask.minimum;
       state.tasks = state.tasks.filter((item) => item.id !== task.id);
       return;
     }
 
     task.date = today;
-    task.actual = 0;
     task.minimum = minimum;
     task.memo = memo;
   });
