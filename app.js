@@ -2446,8 +2446,23 @@ window.setInterval(() => {
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch((error) => {
-      console.error("オフライン機能を有効にできませんでした。", error);
+    navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+      .then((registration) => {
+        registration.update();
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) registration.update();
+        });
+      })
+      .catch((error) => {
+        console.error("オフライン機能を有効にできませんでした。", error);
+      });
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
     });
   });
 }
