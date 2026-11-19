@@ -150,6 +150,12 @@ function normalizeState(stored) {
   stored = stored && typeof stored === "object" ? stored : {};
   const events = Array.isArray(stored.events) ? stored.events : [];
   const goals = Array.isArray(stored.goals) ? stored.goals : [];
+  events.forEach((event) => {
+    event.memo = typeof event.memo === "string" ? event.memo.slice(0, 2000) : "";
+  });
+  goals.forEach((goal) => {
+    goal.memo = typeof goal.memo === "string" ? goal.memo.slice(0, 2000) : "";
+  });
   const ungroupedGoals = goals.filter((goal) => !events.some((event) => event.id === goal.eventId));
   if (ungroupedGoals.length) {
     const legacyEvent = {
@@ -158,6 +164,7 @@ function normalizeState(stored) {
       type: "other",
       start: "",
       end: "",
+      memo: "",
     };
     events.push(legacyEvent);
     ungroupedGoals.forEach((goal) => { goal.eventId = legacyEvent.id; });
@@ -832,13 +839,13 @@ function renderTaskCard(task) {
   return `<article class="task-card${task.completed ? " done" : ""}${isPast && !task.completed ? " past-uncompleted" : ""}">
     <div class="task-card-summary">
       <div class="task-main">
-        <p class="card-title">${escapeHtml(title)}</p>
+        <button class="card-title detail-title" type="button" data-task-details="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の詳細を表示">${escapeHtml(title)}</button>
         <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(getTaskStudySeconds(task))}${details}</p>
       </div>
       ${(surplus || shortfall) ? `<div class="task-remainder">${surplus}${shortfall}</div>` : ""}
     </div>
     <div class="task-card-footer">
-      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-task-details="${escapeHtml(task.id)}" aria-label="タスクの詳細" title="詳細">⋮</button><button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButton}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
+      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButton}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
     </div>
   </article>`;
 }
@@ -950,18 +957,13 @@ function renderEventCard(event) {
   const eventGoals = state.goals
     .filter((goal) => goal.eventId === event.id)
     .sort(compareGoalsByDeadlineAndSubject);
-  const typeLabel = {
-    holiday: "長期休暇",
-    regular_exam: "定期試験",
-    mock_exam: "模擬試験",
-    other: "その他",
-  }[event.type] || "その他";
+  const typeLabel = getEventTypeLabel(event.type);
   const eventDates = event.start && event.end
     ? `${formatDate(event.start)} — ${formatDate(event.end)}`
     : "日程未設定";
   return `<article class="event-card">
     <div class="event-heading">
-      <div class="card-top"><div><p class="card-title">${escapeHtml(event.title)}</p><p class="card-subtitle">${eventDates}</p></div>
+      <div class="card-top"><div><button class="card-title detail-title" type="button" data-event-details="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)}の詳細を表示">${escapeHtml(event.title)}</button><p class="card-subtitle">${eventDates}</p></div>
         <span class="badge">${typeLabel}</span>
       </div>
       <div class="event-actions"><button class="text-button icon-action" type="button" data-edit-event="${escapeHtml(event.id)}" aria-label="イベントを編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-event="${escapeHtml(event.id)}" aria-label="イベントを削除" title="削除">🗑️</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
@@ -971,6 +973,15 @@ function renderEventCard(event) {
       : `<p class="muted-empty">このイベントの長期計画はまだありません。</p>`}
     </div>
   </article>`;
+}
+
+function getEventTypeLabel(type) {
+  return {
+    holiday: "長期休暇",
+    regular_exam: "定期試験",
+    mock_exam: "模擬試験",
+    other: "その他",
+  }[type] || "その他";
 }
 
 function renderGoalCard(goal) {
@@ -988,7 +999,7 @@ function renderGoalCard(goal) {
     ? ""
     : `<button class="text-button" type="button" data-add-pool="${escapeHtml(goal.id)}">＋ 週間プールに追加</button>`;
   return `<article class="goal-card">
-    <div class="card-top"><div><p class="card-title">${escapeHtml(goal.title)}</p><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p>${goal.scope ? `<p class="card-subtitle">範囲: ${escapeHtml(goal.scope)}</p>` : ""}</div>
+    <div class="card-top"><div><button class="card-title detail-title" type="button" data-goal-details="${escapeHtml(goal.id)}" aria-label="${escapeHtml(goal.title)}の詳細を表示">${escapeHtml(goal.title)}</button><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周 ・ ${deadline}${submissionDate}</p>${goal.scope ? `<p class="card-subtitle">範囲: ${escapeHtml(goal.scope)}</p>` : ""}</div>
       <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(goal.id)}" aria-label="長期計画を編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}" aria-label="長期計画を削除" title="削除">🗑️</button></div>
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
@@ -1312,12 +1323,12 @@ function renderPools() {
       : `${escapeHtml(pool.goalTitle || "長期計画")}から`;
     const deadline = pool.deadline ? ` ・ 提出 ${formatDate(pool.deadline)}` : "";
     return `<article class="pool-card">
-      <div class="card-top"><div><p class="card-title">${escapeHtml(pool.title)}</p><p class="card-subtitle">${escapeHtml(pool.subject || "科目未設定")} ・ ${poolDescription}${deadline}</p></div>
+      <div class="card-top"><div><button class="card-title detail-title" type="button" data-pool-details="${escapeHtml(pool.id)}" aria-label="${escapeHtml(pool.title)}の詳細を表示">${escapeHtml(pool.title)}</button><p class="card-subtitle">${escapeHtml(pool.subject || "科目未設定")} ・ ${poolDescription}${deadline}</p></div>
         <span class="badge${remaining === 0 ? " complete" : ""}">${remaining === 0 ? "達成" : `残り ${remaining} ${escapeHtml(pool.unit)}`}</span>
       </div>
       <div class="progress-track" role="progressbar" aria-label="${escapeHtml(pool.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
       <div class="progress-meta"><span>${pool.completed} / ${pool.target} ${escapeHtml(pool.unit)} 完了</span><span>${percent}%</span></div>
-      <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions">${returnButton}<button class="text-button icon-action" type="button" data-pool-details="${escapeHtml(pool.id)}" aria-label="週間プールの詳細" title="詳細">⋮</button><button class="text-button icon-action" type="button" data-edit-pool="${escapeHtml(pool.id)}" aria-label="週間プールを編集" title="編集">✏️</button>${buttons}</div></div>
+      <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-pool="${escapeHtml(pool.id)}" aria-label="週間プールを編集" title="編集">✏️</button>${buttons}</div></div>
     </article>`;
   }).join("");
 }
@@ -1747,6 +1758,13 @@ document.addEventListener("click", (event) => {
     form.elements.type.value = item.type;
     form.elements.start.value = item.start;
     form.elements.end.value = item.end;
+    form.elements.memo.value = item.memo || "";
+    return;
+  }
+  const eventDetailsButton = event.target.closest("[data-event-details]");
+  if (eventDetailsButton) {
+    const item = state.events.find((eventItem) => eventItem.id === eventDetailsButton.dataset.eventDetails);
+    if (item) openEventDetails(item);
     return;
   }
   const editGoalButton = event.target.closest("[data-edit-goal]");
@@ -1763,8 +1781,15 @@ document.addEventListener("click", (event) => {
     form.elements.laps.value = item.laps;
     form.elements.deadline.value = item.deadline || "";
     form.elements.submissionDate.value = item.submissionDate || "";
+    form.elements.memo.value = item.memo || "";
     const parentEvent = state.events.find((eventItem) => eventItem.id === item.eventId);
     document.querySelector("#goal-event-title").textContent = `${parentEvent?.title || "イベント未設定"} の長期計画`;
+    return;
+  }
+  const goalDetailsButton = event.target.closest("[data-goal-details]");
+  if (goalDetailsButton) {
+    const item = state.goals.find((goal) => goal.id === goalDetailsButton.dataset.goalDetails);
+    if (item) openGoalDetails(item);
     return;
   }
   const addPoolButton = event.target.closest("[data-add-pool]");
@@ -1808,13 +1833,13 @@ document.addEventListener("click", (event) => {
   const taskDetailsButton = event.target.closest("[data-task-details]");
   if (taskDetailsButton) {
     const task = state.tasks.find((item) => item.id === taskDetailsButton.dataset.taskDetails);
-    if (task) openRecordDetails("タスクの詳細", task);
+    if (task) openTaskDetails(task);
     return;
   }
   const poolDetailsButton = event.target.closest("[data-pool-details]");
   if (poolDetailsButton) {
     const pool = state.pools.find((item) => item.id === poolDetailsButton.dataset.poolDetails);
-    if (pool) openRecordDetails("週間プールの詳細", pool);
+    if (pool) openPoolDetails(pool);
     return;
   }
   const editTaskButton = event.target.closest("[data-edit-task]");
@@ -2129,6 +2154,7 @@ eventForm.addEventListener("submit", (event) => {
     type: String(data.get("type")),
     start,
     end,
+    memo: String(data.get("memo") || "").trim(),
   };
   if (form.dataset.editId) {
     const index = state.events.findIndex((item) => item.id === form.dataset.editId);
@@ -2161,6 +2187,7 @@ goalForm.addEventListener("submit", (event) => {
     completed: 0,
     deadline: String(data.get("deadline") || ""),
     submissionDate: String(data.get("submissionDate") || ""),
+    memo: String(data.get("memo") || "").trim(),
   };
   if (!parentEvent || !state.settings.subjects.includes(goal.subject) || !goal.title || !goal.unit || !Number.isSafeInteger(goal.total) || goal.total < 1 || !Number.isSafeInteger(goal.laps) || goal.laps < 1) {
     showError(form, "イベント・科目を選択し、教材名・単位・量を正しく入力してください。");
@@ -2447,35 +2474,116 @@ document.querySelector("#carry-pool-form").addEventListener("submit", (event) =>
   saveStateAndClose(elements.carryPoolDialog, form);
 });
 
-const taskAttributeLabels = {
-  id: "ID",
-  poolId: "週間プールID",
-  quizId: "予定ID",
-  title: "タスク名",
-  subject: "科目",
-  unit: "単位",
-  scope: "範囲",
-  scopeUnit: "範囲の単位",
-  minimum: "最低量",
-  actual: "実績量",
-  date: "日付",
-  completed: "完了状態",
-  memo: "メモ",
-  studySeconds: "勉強時間（秒）",
-  studyLogs: "勉強記録",
-};
+function formatDetailDate(value) {
+  return value ? formatDate(value, { year: "numeric", month: "long", day: "numeric" }) : "未設定";
+}
 
-function openRecordDetails(title, record) {
+function formatDetailDuration(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  if (!total) return "0分";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainingSeconds = total % 60;
+  return [
+    hours ? `${hours}時間` : "",
+    minutes ? `${minutes}分` : "",
+    remainingSeconds ? `${remainingSeconds}秒` : "",
+  ].filter(Boolean).join("");
+}
+
+function openTaskDetails(task) {
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  const recorded = Number(task.actual || 0);
+  const unit = pool?.unit || task.unit || "";
+  const status = task.completed
+    ? "完了"
+    : recorded >= task.minimum
+      ? "最低量達成・継続中"
+      : recorded > 0
+        ? "記録あり"
+        : "未着手";
+  const studyLogs = (task.studyLogs || []).map((log) =>
+    `${formatDetailDate(log.date)}：勉強 ${formatDetailDuration(log.seconds)}、実施量 ${log.amount} ${unit}`.trim());
+  const details = [
+    { label: "タスク名", value: pool?.title || task.title || "未設定" },
+    { label: "科目", value: pool?.subject || task.subject || "未設定" },
+    { label: "取り組む日", value: formatDetailDate(task.date) },
+    { label: "状態", value: status },
+    { label: "今日の最低量", value: `${task.minimum || 0} ${unit}`.trim() },
+    { label: "実績量", value: `${recorded} ${unit}`.trim() },
+  ];
+  const scope = task.scope || pool?.scope;
+  const scopeUnit = task.scopeUnit || pool?.scopeUnit;
+  if (scope) details.push({ label: "範囲", value: `${scope}${scopeUnit ? `（${scopeUnit}）` : ""}` });
+  if (pool?.goalTitle) details.push({ label: "長期計画", value: pool.goalTitle });
+  details.push(
+    { label: "勉強時間", value: formatDetailDuration(getTaskStudySeconds(task)) },
+    { label: "メモ", value: task.memo || "メモなし" },
+  );
+  if (studyLogs.length) details.push({ label: "勉強記録の内訳", value: studyLogs.join("\n") });
+  openRecordDetails("タスクの詳細", details);
+}
+
+function openPoolDetails(pool) {
+  const completed = Number(pool.completed || 0);
+  const remaining = Math.max(0, Number(pool.target || 0) - completed);
+  const details = [
+    { label: "タスク名", value: pool.title || "未設定" },
+    { label: "科目", value: pool.subject || "未設定" },
+    { label: "範囲", value: pool.scope || pool.goalTitle || "未設定" },
+    { label: "期間", value: `${formatDetailDate(pool.start)} 〜 ${formatDetailDate(pool.end)}` },
+    { label: "進捗", value: `${completed} / ${pool.target} ${pool.unit || ""}`.trim() },
+    { label: "残り", value: `${remaining} ${pool.unit || ""}`.trim() },
+    { label: "状態", value: pool.status === "active" ? "進行中" : "終了" },
+  ];
+  if (pool.deadline) details.push({ label: "提出日", value: formatDetailDate(pool.deadline) });
+  details.push({ label: "メモ", value: pool.memo || "メモなし" });
+  openRecordDetails("週間プールの詳細", details);
+}
+
+function openEventDetails(event) {
+  const goals = state.goals.filter((goal) => goal.eventId === event.id);
+  const eventDates = event.start && event.end
+    ? `${formatDetailDate(event.start)} 〜 ${formatDetailDate(event.end)}`
+    : "日程未設定";
+  openRecordDetails("イベントの詳細", [
+    { label: "イベント名", value: event.title || "未設定" },
+    { label: "種類", value: getEventTypeLabel(event.type) },
+    { label: "期間", value: eventDates },
+    { label: "長期計画", value: goals.length ? goals.map((goal) => goal.title).join("\n") : "登録なし" },
+    { label: "メモ", value: event.memo || "メモなし" },
+  ]);
+}
+
+function openGoalDetails(goal) {
+  const event = state.events.find((item) => item.id === goal.eventId);
+  const completed = goalProgress(goal);
+  const total = goal.total * goal.laps;
+  const deadlineLabel = goal.deadline && goal.deadline === goal.submissionDate ? "提出期限" : "期限";
+  const details = [
+    { label: "計画名", value: goal.title || "未設定" },
+    { label: "イベント", value: event?.title || "未設定" },
+    { label: "科目", value: goal.subject || "未設定" },
+    { label: "範囲", value: goal.scope || "未設定" },
+    { label: "単位", value: goal.unit || "未設定" },
+    { label: "1周あたり", value: `${goal.total} ${goal.unit || ""}`.trim() },
+    { label: "目標周回数", value: `${goal.laps} 周` },
+    { label: "全体の目標量", value: `${total} ${goal.unit || ""}`.trim() },
+    { label: "進捗", value: `${completed} / ${total} ${goal.unit || ""}`.trim() },
+    { label: deadlineLabel, value: goal.deadline ? formatDetailDate(goal.deadline) : "期限なし" },
+  ];
+  if (goal.submissionDate && goal.submissionDate !== goal.deadline) {
+    details.push({ label: "提出日", value: formatDetailDate(goal.submissionDate) });
+  }
+  details.push({ label: "メモ", value: goal.memo || "メモなし" });
+  openRecordDetails("長期計画の詳細", details);
+}
+
+function openRecordDetails(title, details) {
   document.querySelector("#task-details-title").textContent = title;
-  document.querySelector("#task-details-content").innerHTML = Object.entries(record)
-    .map(([key, value]) => {
-      const displayedValue = value && typeof value === "object"
-        ? JSON.stringify(value, null, 2)
-        : value === null || value === undefined || value === ""
-          ? "未設定"
-          : String(value);
-      return `<div class="record-detail-row"><dt>${escapeHtml(taskAttributeLabels[key] || key)}</dt><dd><pre>${escapeHtml(displayedValue)}</pre></dd></div>`;
-    }).join("");
+  document.querySelector("#task-details-content").innerHTML = details
+    .map(({ label, value }) => `<div class="record-detail-row"><dt>${escapeHtml(label)}</dt><dd><pre>${escapeHtml(value)}</pre></dd></div>`)
+    .join("");
   elements.taskDetailsDialog.showModal();
 }
 

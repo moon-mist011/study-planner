@@ -257,6 +257,7 @@
           <label>開始日<input name="start" type="date" required /></label>
           <label>終了日<input name="end" type="date" required /></label>
         </div>
+        <label>メモ <span class="optional">(任意)</span><textarea name="memo" maxlength="2000" rows="3" placeholder="イベントについてのメモ"></textarea></label>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">イベントを保存</button></div>
       </form>
@@ -321,6 +322,7 @@
           <label>期限日 <span class="optional">(任意)</span><input name="deadline" type="date" /></label>
         </div>
         <label>提出日 <span class="optional">(任意)</span><input name="submissionDate" type="date" /></label>
+        <label>メモ <span class="optional">(任意)</span><textarea name="memo" maxlength="2000" rows="3" placeholder="長期計画についてのメモ"></textarea></label>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">目標を保存</button></div>
       </form>
@@ -366,7 +368,7 @@
 
     <dialog id="task-details-dialog" class="modal details-modal">
       <div class="modal-heading">
-        <div><p class="eyebrow">DETAILS</p><h2 id="task-details-title">タスクの詳細</h2></div>
+        <div><p class="eyebrow">DETAILS</p><h2 id="task-details-title">詳細</h2></div>
         <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
       </div>
       <dl id="task-details-content" class="record-details"></dl>
