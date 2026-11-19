@@ -133,10 +133,13 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .delete-button { color: #b84d42; }
 .text-button:hover, .text-link:hover { text-decoration: underline; }
 .text-button:disabled { color: #b0b9b3; cursor: default; text-decoration: none; }
-.task-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; }
+.task-card { display: block; padding: 13px 15px; }
+.task-card-summary { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.task-remainder { flex: 0 0 auto; padding-top: 1px; text-align: right; }
 .task-main { min-width: 0; }
 .task-detail { margin: 5px 0 0; color: #86928b; font-size: 10px; }
-.task-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.task-card-footer { display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0f2ef; }
+.task-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .task-complete { padding: 8px 11px; border: 0; border-radius: 8px; color: white; background: var(--green); font-size: 10px; font-weight: 600; }
 .task-complete:hover { background: var(--green-dark); }
 .task-card.done { background: #fbfcfa; }
@@ -345,5 +348,7 @@ button.calendar-cell:hover { background: #f7faf6; }
 @media (max-width: 380px) {
   .section-heading { align-items: flex-start; }
   .button-small { padding: 0 8px; font-size: 10px; }
-  .task-card { align-items: flex-start; flex-direction: column; }
+  .task-card-summary { align-items: flex-start; }
+  .task-main { flex: 1 1 auto; }
+  .task-remainder { max-width: 42%; }
 }
