@@ -448,7 +448,9 @@ async function loadUserState(user) {
   if (generation !== authLoadGeneration) return;
   setAuthenticatedView(true);
   setAuthMessage("同期済み");
-  if (moveDueSchedulesToPools() || taskProgressReconciled) saveState();
+  const schedulesMoved = moveDueSchedulesToPools();
+  const pastTasksCompleted = completeAchievedPastTasks();
+  if (schedulesMoved || taskProgressReconciled || pastTasksCompleted) saveState();
   else render();
 }
 
@@ -851,7 +853,7 @@ function renderTaskCard(task) {
       ${(surplus || shortfall) ? `<div class="task-remainder">${surplus}${shortfall}</div>` : ""}
     </div>
     <div class="task-card-footer">
-      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButton}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
+      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButton}${task.completed ? "" : `${achieved ? `<button class="task-complete" type="button" data-mark-task-complete="${escapeHtml(task.id)}">✅ 完了</button>` : ""}<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
     </div>
   </article>`;
 }
@@ -889,7 +891,9 @@ function scheduleEventRefresh() {
       selectedCalendarDate = currentDate;
       calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     }
-    if (moveDueSchedulesToPools()) saveState();
+    const schedulesMoved = moveDueSchedulesToPools();
+    const pastTasksCompleted = completeAchievedPastTasks();
+    if (schedulesMoved || pastTasksCompleted) saveState();
     else render();
     renderCalendar();
     scheduleEventRefresh();
@@ -1967,6 +1971,16 @@ document.addEventListener("click", (event) => {
     form.elements.actual.value = Math.max(0, task.minimum - (task.actual || 0));
     return;
   }
+  const markTaskCompleteButton = event.target.closest("[data-mark-task-complete]");
+  if (markTaskCompleteButton) {
+    const task = state.tasks.find((item) => item.id === markTaskCompleteButton.dataset.markTaskComplete);
+    const minimum = Number(task?.minimum);
+    if (!task || task.completed || !Number.isSafeInteger(minimum) || minimum < 1
+      || Number(task.actual || 0) < minimum) return;
+    task.completed = true;
+    saveState();
+    return;
+  }
   const outcomeButton = event.target.closest("[data-task-outcome]");
   if (outcomeButton) {
     if (!pendingTaskRecord) return;
@@ -2377,6 +2391,19 @@ function commitTaskRecord(taskId, amount, complete) {
   if (!task || task.completed) return;
   addTaskActual(task, amount);
   task.completed = complete;
+}
+
+function completeAchievedPastTasks() {
+  let changed = false;
+  state.tasks.forEach((task) => {
+    const minimum = Number(task.minimum);
+    if (!task.completed && task.date < today && Number.isSafeInteger(minimum) && minimum > 0
+      && Number(task.actual || 0) >= minimum) {
+      task.completed = true;
+      changed = true;
+    }
+  });
+  return changed;
 }
 
 elements.completeDialog.addEventListener("close", () => {
