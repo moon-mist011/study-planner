@@ -184,9 +184,7 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .recording-task-title-button { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; line-height: inherit; text-align: center; overflow-wrap: anywhere; }
 .recording-task-title-button:hover { color: var(--green); text-decoration: underline; }
 .recording-task-title-button:focus-visible { border-radius: 4px; outline: 2px solid #75ad87; outline-offset: 4px; }
-.recording-memo-field { display: grid; width: min(560px, 100%); gap: 7px; margin: 0 auto 14px; color: #64736a; text-align: left; font-size: 11px; font-weight: 600; }
-.recording-memo-field textarea { width: 100%; min-height: 76px; padding: 10px 11px; border: 1px solid #dfe5df; border-radius: 9px; outline: none; color: var(--ink); background: rgba(255,255,255,.92); font-size: 12px; font-weight: 400; line-height: 1.6; resize: vertical; }
-.recording-memo-field textarea:focus { border-color: #75ad87; box-shadow: 0 0 0 3px #e9f4eb; }
+.details-memo-form { margin-top: 12px; }
 .recording-elapsed { display: block; color: var(--ink); font-size: clamp(58px, 18vw, 148px); font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: -.07em; line-height: 1.15; }
 .recording-clock { display: block; margin-top: 15px; color: #839087; font-size: clamp(16px, 3vw, 21px); font-variant-numeric: tabular-nums; letter-spacing: .08em; }
 .recording-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 28px; }

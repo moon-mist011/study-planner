@@ -177,10 +177,6 @@
         <div class="recording-content">
           <p class="eyebrow">NOW STUDYING</p>
           <h1 id="recording-task-title" class="recording-task-title"></h1>
-          <label class="recording-memo-field">
-            メモ
-            <textarea id="recording-task-memo" maxlength="2000" rows="3" placeholder="タスクのメモを編集"></textarea>
-          </label>
           <output id="recording-elapsed" class="recording-elapsed" aria-label="計測中の時間">00:00:00</output>
           <time id="recording-clock" class="recording-clock"></time>
           <div class="recording-actions">
@@ -376,6 +372,12 @@
         <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
       </div>
       <dl id="task-details-content" class="record-details"></dl>
+      <form id="task-details-memo-form" class="details-memo-form" hidden>
+        <input type="hidden" name="taskId" />
+        <label>メモ <span class="optional">(任意)</span><textarea name="memo" maxlength="2000" rows="4" placeholder="タスクについてのメモ"></textarea></label>
+        <p class="form-error" aria-live="polite"></p>
+        <div class="modal-actions"><button class="button button-primary" type="submit">メモを保存</button></div>
+      </form>
     </dialog>
 
     <dialog id="return-task-dialog" class="modal">
@@ -405,6 +407,7 @@
           <div class="quick-amounts" data-target="actual">
             <button type="button" data-add="1">＋1</button><button type="button" data-add="5">＋5</button><button type="button" data-add="10">＋10</button>
           </div>
+          <label id="task-record-minutes-field">勉強時間（分）<input name="minutes" type="number" min="0" step="1" value="0" required /></label>
         </div>
         <div class="task-outcome" id="task-outcome" hidden>
           <p>最低量に達しました。このToDoをどうしますか？</p>
@@ -413,6 +416,7 @@
             <button class="button button-primary" type="button" data-task-outcome="complete">完了</button>
           </div>
         </div>
+        <label id="task-record-memo-field">メモ <span class="optional">(任意)</span><textarea name="memo" maxlength="2000" rows="4" placeholder="このタスクについてのメモ"></textarea></label>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions" id="task-record-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">実績を記録</button></div>
       </form>
