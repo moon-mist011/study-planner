@@ -44,7 +44,10 @@ const elements = {
   goalDialog: document.querySelector("#goal-dialog"),
   poolDialog: document.querySelector("#pool-dialog"),
   taskDialog: document.querySelector("#task-dialog"),
+  taskDetailsDialog: document.querySelector("#task-details-dialog"),
+  returnTaskDialog: document.querySelector("#return-task-dialog"),
   completeDialog: document.querySelector("#complete-dialog"),
+  carryPoolDialog: document.querySelector("#carry-pool-dialog"),
   carryOverdueDialog: document.querySelector("#carry-overdue-dialog"),
   studyLogDialog: document.querySelector("#study-log-dialog"),
   settingsDialog: document.querySelector("#settings-dialog"),
@@ -169,6 +172,12 @@ function normalizeState(stored) {
   const storedPeriodCount = Number(stored.settings?.periodCount);
   const tasks = Array.isArray(stored.tasks) ? stored.tasks : [];
   const pools = Array.isArray(stored.pools) ? stored.pools : [];
+  pools.forEach((pool) => {
+    pool.memo = typeof pool.memo === "string" ? pool.memo.slice(0, 2000) : "";
+  });
+  tasks.forEach((task) => {
+    task.memo = typeof task.memo === "string" ? task.memo.slice(0, 2000) : "";
+  });
   pools.forEach((pool) => {
     if (pool.scope === "長期計画の提出日" && pool.deadline) {
       pool.scope = formatSubmissionDate(pool.deadline);
@@ -829,7 +838,7 @@ function renderTaskCard(task) {
       ${(surplus || shortfall) ? `<div class="task-remainder">${surplus}${shortfall}</div>` : ""}
     </div>
     <div class="task-card-footer">
-      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButton}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
+      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-task-details="${escapeHtml(task.id)}" aria-label="タスクの詳細" title="詳細">⋮</button><button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButton}${task.completed ? "" : `<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
     </div>
   </article>`;
 }
@@ -922,6 +931,7 @@ function createSchedulePool(schedule) {
     target: goal ? Math.max(1, goal.total * goal.laps - goalProgress(goal)) : 1,
     completed: 0,
     status: "active",
+    memo: "",
   });
   return true;
 }
@@ -1307,7 +1317,7 @@ function renderPools() {
       </div>
       <div class="progress-track" role="progressbar" aria-label="${escapeHtml(pool.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
       <div class="progress-meta"><span>${pool.completed} / ${pool.target} ${escapeHtml(pool.unit)} 完了</span><span>${percent}%</span></div>
-      <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-pool="${escapeHtml(pool.id)}" aria-label="週間プールを編集" title="編集">✏️</button>${buttons}</div></div>
+      <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions">${returnButton}<button class="text-button icon-action" type="button" data-pool-details="${escapeHtml(pool.id)}" aria-label="週間プールの詳細" title="詳細">⋮</button><button class="text-button icon-action" type="button" data-edit-pool="${escapeHtml(pool.id)}" aria-label="週間プールを編集" title="編集">✏️</button>${buttons}</div></div>
     </article>`;
   }).join("");
 }
@@ -1792,6 +1802,19 @@ document.addEventListener("click", (event) => {
     form.elements.target.value = item.target;
     form.elements.start.value = item.start;
     form.elements.end.value = item.end;
+    form.elements.memo.value = item.memo || "";
+    return;
+  }
+  const taskDetailsButton = event.target.closest("[data-task-details]");
+  if (taskDetailsButton) {
+    const task = state.tasks.find((item) => item.id === taskDetailsButton.dataset.taskDetails);
+    if (task) openRecordDetails("タスクの詳細", task);
+    return;
+  }
+  const poolDetailsButton = event.target.closest("[data-pool-details]");
+  if (poolDetailsButton) {
+    const pool = state.pools.find((item) => item.id === poolDetailsButton.dataset.poolDetails);
+    if (pool) openRecordDetails("週間プールの詳細", pool);
     return;
   }
   const editTaskButton = event.target.closest("[data-edit-task]");
@@ -1801,6 +1824,7 @@ document.addEventListener("click", (event) => {
     const form = openEditDialog(elements.taskDialog, item, "今日の最低ラインを編集", "変更を保存");
     form.elements.poolId.value = item.poolId || "";
     form.elements.minimum.value = item.minimum;
+    form.elements.memo.value = item.memo || "";
     const pool = state.pools.find((poolItem) => poolItem.id === item.poolId);
     document.querySelector("#task-pool-title").textContent = pool ? `${pool.title}（${pool.unit}）` : item.title;
     return;
@@ -1837,6 +1861,7 @@ document.addEventListener("click", (event) => {
       scope: quiz.scope || "",
       scopeUnit: quiz.unit || "",
       unit: quiz.kind === "submission" ? (quiz.unit || "件") : "回",
+      memo: "",
       minimum: 1,
       actual: 0,
       date: today,
@@ -1892,6 +1917,7 @@ document.addEventListener("click", (event) => {
     document.querySelector("#task-pool-title").textContent = `${pool.title}（${pool.unit}）`;
     openDialog(elements.taskDialog);
     form.elements.poolId.value = pool.id;
+    form.elements.memo.value = pool.memo || "";
     return;
   }
   const carryOverdueTaskButton = event.target.closest("[data-carry-overdue-task]");
@@ -2198,10 +2224,12 @@ document.querySelector("#pool-form").addEventListener("submit", (event) => {
     editingPool.target = target;
     editingPool.start = start;
     editingPool.end = end;
+    editingPool.memo = String(data.get("memo") || "").trim();
   } else {
     state.pools.push({
       id: createId(), eventId: goal.eventId, goalId: goal.id, goalTitle: goal.title, title: goal.title, subject: goal.subject,
       unit: goal.unit, scope: goal.scope, start, end, target, completed: 0, status: "active",
+      memo: String(data.get("memo") || "").trim(),
     });
   }
   saveStateAndClose(elements.poolDialog, form);
@@ -2222,11 +2250,13 @@ document.querySelector("#task-form").addEventListener("submit", (event) => {
   }
   if (editingTask) {
     editingTask.minimum = minimum;
+    editingTask.memo = form.elements.memo.value.trim();
   } else {
     state.tasks.push({
       id: createId(), poolId: pool.id, ...(pool.sourceQuizId ? { quizId: pool.sourceQuizId } : {}),
       title: pool.title, subject: pool.subject, unit: pool.unit,
       scope: pool.scope || "", scopeUnit: pool.scopeUnit || "", minimum, date: today, completed: false,
+      memo: form.elements.memo.value.trim(),
     });
   }
   saveStateAndClose(elements.taskDialog, form);
@@ -2317,7 +2347,7 @@ function openCarryOverdueDialog(taskIds) {
     const title = pool?.title || task.title || "タスク";
     const shortfall = Math.max(0, Number(task.minimum || 0) - Number(task.actual || 0));
     const defaultMinimum = shortfall > 0 ? shortfall : 1;
-    return `<label class="carry-overdue-row">
+    return `<div class="carry-overdue-row">
       <span><strong>${escapeHtml(title)}</strong><small>未達分 ${shortfall} ${escapeHtml(unit)}</small></span>
       <span class="carry-overdue-amount">
         <input type="number" name="carry-${escapeHtml(task.id)}" data-carry-task="${escapeHtml(task.id)}" min="1" step="1" value="${defaultMinimum}" required />
@@ -2326,8 +2356,9 @@ function openCarryOverdueDialog(taskIds) {
           <button type="button" data-carry-add="5">＋5</button>
           <button type="button" data-carry-add="10">＋10</button>
         </span>
+        <label class="carry-memo-field">メモ<textarea data-carry-memo="${escapeHtml(task.id)}" maxlength="2000">${escapeHtml(task.memo || "")}</textarea></label>
       </span>
-    </label>`;
+    </div>`;
   }).join("");
   openDialog(elements.carryOverdueDialog);
 }
@@ -2349,6 +2380,7 @@ function carryOverdueTasksToToday() {
     const task = state.tasks.find((item) => item.id === input.dataset.carryTask);
     if (!task || task.completed || task.date >= today) return;
     const minimum = Number(input.value);
+    const memo = form.querySelector(`[data-carry-memo="${CSS.escape(input.dataset.carryTask)}"]`)?.value.trim() || "";
     const existingTodayTask = state.tasks.find((item) =>
       item.id !== task.id
       && item.date === today
@@ -2357,6 +2389,7 @@ function carryOverdueTasksToToday() {
 
     if (existingTodayTask) {
       existingTodayTask.minimum += minimum;
+      existingTodayTask.memo = [existingTodayTask.memo, memo].filter((value, index, values) => value && values.indexOf(value) === index).join("\n");
       state.tasks = state.tasks.filter((item) => item.id !== task.id);
       return;
     }
@@ -2364,6 +2397,7 @@ function carryOverdueTasksToToday() {
     task.date = today;
     task.actual = 0;
     task.minimum = minimum;
+    task.memo = memo;
   });
   saveStateAndClose(elements.carryOverdueDialog, form);
 }
@@ -2378,6 +2412,26 @@ function carryPool(poolId) {
   if (!pool || pool.status !== "active") return;
   const remaining = Math.max(0, pool.target - pool.completed);
   if (!remaining) return;
+  const form = elements.carryPoolDialog.querySelector("form");
+  openDialog(elements.carryPoolDialog);
+  form.elements.poolId.value = pool.id;
+  form.elements.memo.value = pool.memo || "";
+}
+
+document.querySelector("#carry-pool-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const pool = state.pools.find((item) => item.id === form.elements.poolId.value);
+  if (!pool || pool.status !== "active") {
+    showError(form, "繰り越す週間プールが見つかりません。");
+    return;
+  }
+  const remaining = Math.max(0, pool.target - pool.completed);
+  if (!remaining) {
+    showError(form, "繰り越せる残り量がありません。");
+    return;
+  }
   const nextStart = shiftDate(pool.end, 1);
   pool.status = "closed";
   state.pools.push({
@@ -2388,33 +2442,108 @@ function carryPool(poolId) {
     target: remaining,
     completed: 0,
     status: "active",
+    memo: form.elements.memo.value.trim(),
   });
-  saveState();
+  saveStateAndClose(elements.carryPoolDialog, form);
+});
+
+const taskAttributeLabels = {
+  id: "ID",
+  poolId: "週間プールID",
+  quizId: "予定ID",
+  title: "タスク名",
+  subject: "科目",
+  unit: "単位",
+  scope: "範囲",
+  scopeUnit: "範囲の単位",
+  minimum: "最低量",
+  actual: "実績量",
+  date: "日付",
+  completed: "完了状態",
+  memo: "メモ",
+  studySeconds: "勉強時間（秒）",
+  studyLogs: "勉強記録",
+};
+
+function openRecordDetails(title, record) {
+  document.querySelector("#task-details-title").textContent = title;
+  document.querySelector("#task-details-content").innerHTML = Object.entries(record)
+    .map(([key, value]) => {
+      const displayedValue = value && typeof value === "object"
+        ? JSON.stringify(value, null, 2)
+        : value === null || value === undefined || value === ""
+          ? "未設定"
+          : String(value);
+      return `<div class="record-detail-row"><dt>${escapeHtml(taskAttributeLabels[key] || key)}</dt><dd><pre>${escapeHtml(displayedValue)}</pre></dd></div>`;
+    }).join("");
+  elements.taskDetailsDialog.showModal();
 }
 
 function returnTaskToPool(taskId) {
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task || hasTaskProgress(task)) return;
-  let schedule;
-  let pool;
+  const pool = task.poolId ? state.pools.find((item) => item.id === task.poolId) : null;
+  const schedule = !pool && task.quizId
+    ? state.quizzes.find((item) => item.id === task.quizId)
+    : null;
   if (task.poolId) {
-    pool = state.pools.find((item) => item.id === task.poolId);
     if (!pool || pool.status !== "active") return;
   } else if (task.quizId) {
-    schedule = state.quizzes.find((item) => item.id === task.quizId);
     if (!schedule) return;
-    pool = findSchedulePool(schedule);
-    if (pool && pool.status !== "active") return;
+    const schedulePool = findSchedulePool(schedule);
+    if (schedulePool && schedulePool.status !== "active") return;
   } else {
     return;
   }
-  const destination = pool ? "既存の週間プール" : "週間プール";
-  if (!window.confirm(`「${task.title}」を今日のToDoから${destination}に戻します。ToDoは削除されます。よろしいですか？`)) return;
-  if (!pool && schedule && !createSchedulePool(schedule)) return;
+  const form = elements.returnTaskDialog.querySelector("form");
+  openDialog(elements.returnTaskDialog);
+  form.elements.taskId.value = task.id;
+  form.elements.memo.value = task.memo || "";
+  document.querySelector("#return-task-title").textContent = `「${task.title}」を週間プールへ戻します。ToDoは削除されます。`;
+}
+
+document.querySelector("#return-task-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const task = state.tasks.find((item) => item.id === form.elements.taskId.value);
+  if (!task || hasTaskProgress(task)) {
+    showError(form, "実績や勉強記録のあるタスクは週間プールへ戻せません。");
+    return;
+  }
+  let pool = task.poolId ? state.pools.find((item) => item.id === task.poolId) : null;
+  if (pool && pool.status !== "active") {
+    showError(form, "戻し先の週間プールが見つかりません。");
+    return;
+  }
+  if (!pool && task.quizId) {
+    const schedule = state.quizzes.find((item) => item.id === task.quizId);
+    if (!schedule) {
+      showError(form, "戻し先の予定が見つかりません。");
+      return;
+    }
+    pool = findSchedulePool(schedule);
+    if (pool && pool.status !== "active") {
+      showError(form, "戻し先の週間プールが終了しています。");
+      return;
+    }
+    if (!pool) {
+      if (!createSchedulePool(schedule)) {
+        showError(form, "週間プールを作成できませんでした。");
+        return;
+      }
+      pool = findSchedulePool(schedule);
+    }
+  }
+  if (!pool) {
+    showError(form, "戻し先の週間プールが見つかりません。");
+    return;
+  }
+  pool.memo = form.elements.memo.value.trim();
   if (state.studyTimer?.taskId === task.id) state.studyTimer = null;
   state.tasks = state.tasks.filter((item) => item.id !== task.id);
-  saveState();
-}
+  saveStateAndClose(elements.returnTaskDialog, form);
+});
 
 function returnPoolToSource(poolId) {
   const pool = state.pools.find((item) => item.id === poolId);

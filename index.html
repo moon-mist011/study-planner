@@ -338,6 +338,7 @@
           <label>開始日<input name="start" type="date" required /></label>
           <label>終了日<input name="end" type="date" required /></label>
         </div>
+        <label>メモ <span class="optional">(任意)</span><textarea name="memo" maxlength="2000" rows="3" placeholder="この週間プールについてのメモ"></textarea></label>
         <p class="form-hint">日ごとの予定は作らず、期間内に進める量だけを決めます。</p>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">プールを保存</button></div>
@@ -356,9 +357,32 @@
         <div class="quick-amounts" data-target="minimum">
           <button type="button" data-add="1">＋1</button><button type="button" data-add="5">＋5</button><button type="button" data-add="10">＋10</button>
         </div>
+        <label>メモ <span class="optional">(任意)</span><textarea name="memo" maxlength="2000" rows="3" placeholder="このタスクについてのメモ"></textarea></label>
         <p class="form-hint">実際にできた量に上限はありません。</p>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">ToDoに追加</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="task-details-dialog" class="modal details-modal">
+      <div class="modal-heading">
+        <div><p class="eyebrow">DETAILS</p><h2 id="task-details-title">タスクの詳細</h2></div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
+      </div>
+      <dl id="task-details-content" class="record-details"></dl>
+    </dialog>
+
+    <dialog id="return-task-dialog" class="modal">
+      <form id="return-task-form">
+        <div class="modal-heading">
+          <div><p class="eyebrow">MOVE TASK</p><h2>週間プールへ戻す</h2></div>
+          <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
+        </div>
+        <p id="return-task-title" class="modal-description"></p>
+        <input type="hidden" name="taskId" />
+        <label>メモ <span class="optional">(任意)</span><textarea name="memo" maxlength="2000" rows="4" placeholder="週間プールへ引き継ぐメモ"></textarea></label>
+        <p class="form-error" aria-live="polite"></p>
+        <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">週間プールへ戻す</button></div>
       </form>
     </dialog>
 
@@ -385,6 +409,19 @@
         </div>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions" id="task-record-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">実績を記録</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="carry-pool-dialog" class="modal">
+      <form id="carry-pool-form">
+        <div class="modal-heading">
+          <div><p class="eyebrow">CARRY OVER</p><h2>週間プールを繰り越す</h2></div>
+          <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
+        </div>
+        <input type="hidden" name="poolId" />
+        <label>メモ <span class="optional">(任意)</span><textarea name="memo" maxlength="2000" rows="4" placeholder="週間プールについてのメモ"></textarea></label>
+        <p class="form-error" aria-live="polite"></p>
+        <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">繰り越す</button></div>
       </form>
     </dialog>
 
