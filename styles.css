@@ -121,8 +121,6 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .detail-title:hover { color: var(--green); text-decoration: underline; }
 .detail-title:focus-visible { border-radius: 3px; outline: 2px solid #75ad87; outline-offset: 3px; }
 .card-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
-.goal-date-meta { display: flex; flex-wrap: wrap; gap: 0 10px; }
-.goal-date-meta span { white-space: nowrap; }
 .badge { flex: 0 0 auto; padding: 4px 8px; color: #5b7767; background: #eff5ef; border-radius: 99px; font-size: 9px; }
 .badge.complete { color: #5a7d65; background: #eaf5ec; }
 .progress-track { height: 6px; margin: 14px 0 7px; overflow: hidden; background: #eff2ee; border-radius: 9px; }
@@ -351,9 +349,6 @@ button.calendar-cell:hover { background: #f7faf6; }
   .event-goals { margin-top: 10px; padding-top: 10px; }
   .carry-overdue-row { grid-template-columns: 1fr; }
   .record-detail-row { grid-template-columns: 1fr; gap: 5px; }
-  .goal-date-meta { display: block; }
-  .goal-date-meta span { display: block; }
-  .goal-date-meta span + span { margin-top: 3px; }
   .pool-card .card-footer { align-items: flex-start; flex-direction: column; }
   .pool-actions { justify-content: flex-start; }
 }

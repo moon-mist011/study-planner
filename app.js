@@ -1004,12 +1004,12 @@ function renderGoalCard(goal) {
   const deadline = datesMatch
     ? `提出期限 ${formatDate(goal.deadline)}`
     : goal.deadline ? `期限 ${formatDate(goal.deadline)}` : "期限なし";
-  const submissionDate = goal.submissionDate && !datesMatch ? ` ・ 提出 ${formatDate(goal.submissionDate)}` : "";
+  const submissionDate = goal.submissionDate && !datesMatch ? `提出 ${formatDate(goal.submissionDate)}` : "";
   const poolButton = state.pools.some((pool) => pool.goalId === goal.id && pool.status === "active")
     ? ""
     : `<button class="text-button" type="button" data-add-pool="${escapeHtml(goal.id)}">＋ 週間プールに追加</button>`;
   return `<article class="goal-card">
-    <div class="card-top"><div><button class="card-title detail-title" type="button" data-goal-details="${escapeHtml(goal.id)}" aria-label="${escapeHtml(goal.title)}の詳細を表示">${escapeHtml(goal.title)}</button><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周</p><p class="card-subtitle goal-date-meta"><span>${deadline}</span>${submissionDate ? `<span>${submissionDate.replace(/^ ・ /, "")}</span>` : ""}</p></div>
+    <div class="card-top"><div><button class="card-title detail-title" type="button" data-goal-details="${escapeHtml(goal.id)}" aria-label="${escapeHtml(goal.title)}の詳細を表示">${escapeHtml(goal.title)}</button><p class="card-subtitle">${escapeHtml(goal.subject || "科目未設定")} ・ ${escapeHtml(goal.total)} ${escapeHtml(goal.unit)} × ${escapeHtml(goal.laps)}周</p><p class="card-subtitle goal-date-meta">${escapeHtml(deadline)}${submissionDate ? ` ・ ${escapeHtml(submissionDate)}` : ""}</p></div>
       <div class="goal-actions"><span class="badge${percent === 100 ? " complete" : ""}">${status}</span><button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(goal.id)}" aria-label="長期計画を編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-goal="${escapeHtml(goal.id)}" aria-label="長期計画を削除" title="削除">🗑️</button></div>
     </div>
     <div class="progress-track" role="progressbar" aria-label="${escapeHtml(goal.title)}の進捗" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>
