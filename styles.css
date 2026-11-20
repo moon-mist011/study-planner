@@ -147,9 +147,9 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .task-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .task-complete { padding: 8px 11px; border: 0; border-radius: 8px; color: white; background: var(--green); font-size: 10px; font-weight: 600; }
 .task-complete:hover { background: var(--green-dark); }
-.task-card.done { background: #fbfcfa; }
+.task-card.done { border-color: #cfe4d3; background: var(--green-pale); }
 .task-card.past-uncompleted { border-color: #f2d9d5; background: #fff3f1; }
-.task-card.done .card-title { color: #829087; }
+.task-card.done .card-title { color: var(--green-dark); }
 .task-card.done .task-complete { color: var(--green); background: #eaf4ec; }
 .surplus { color: #cf7e3e; font-size: 10px; font-weight: 700; }
 .shortfall { color: #b76a4b; font-size: 10px; font-weight: 700; }

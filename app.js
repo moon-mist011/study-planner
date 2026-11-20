@@ -804,10 +804,12 @@ function renderSummary() {
 
 function renderTasks() {
   const visibleTasks = state.tasks
-    .filter((task) => !task.completed && (task.date === today || task.date < today))
-    .sort(compareTasksByDeadlineAndSubject);
+    .filter((task) => task.date === today || (!task.completed && task.date < today))
+    .sort((a, b) => Number(a.completed) - Number(b.completed)
+      || b.date.localeCompare(a.date)
+      || getTaskSubjectOrder(a) - getTaskSubjectOrder(b));
   const pastTasks = state.tasks
-    .filter((task) => task.completed)
+    .filter((task) => task.completed && task.date !== today)
     .sort(compareTasksByDeadlineAndSubject);
   const overdueTasks = visibleTasks.filter((task) => task.date < today);
   elements.carryOverdueTasks.hidden = overdueTasks.length === 0;
