@@ -158,6 +158,8 @@ function normalizeState(stored) {
   events.forEach((event) => {
     event.memo = typeof event.memo === "string" ? event.memo.slice(0, 2000) : "";
     event.alwaysShow = Boolean(event.alwaysShow);
+    const pinnedAt = Number(event.pinnedAt);
+    event.pinnedAt = event.alwaysShow && Number.isSafeInteger(pinnedAt) && pinnedAt > 0 ? pinnedAt : 0;
   });
   goals.forEach((goal) => {
     goal.memo = typeof goal.memo === "string" ? goal.memo.slice(0, 2000) : "";
@@ -912,7 +914,7 @@ function renderEvents() {
     || (a.end || "9999-12-31").localeCompare(b.end || "9999-12-31");
   const currentEvents = upcomingEvents
     .filter((event) => event.alwaysShow || !event.start || event.start < futureThreshold)
-    .sort(compareUpcomingEvents);
+    .sort((a, b) => (b.pinnedAt || 0) - (a.pinnedAt || 0) || compareUpcomingEvents(a, b));
   const futureEvents = upcomingEvents
     .filter((event) => !event.alwaysShow && event.start && event.start >= futureThreshold)
     .sort(compareUpcomingEvents);
@@ -1026,15 +1028,16 @@ function renderEventCard(event) {
   const eventDates = event.start && event.end
     ? `${formatDate(event.start)} — ${formatDate(event.end)}`
     : "日程未設定";
-  const alwaysShowButton = event.end && event.end < today
-    ? ""
-    : `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}" aria-pressed="${Boolean(event.alwaysShow)}" aria-label="${event.alwaysShow ? "常に表示を解除" : "イベントと長期計画を常に表示"}" title="${event.alwaysShow ? "常に表示を解除" : "イベントと長期計画を常に表示"}">${event.alwaysShow ? "📌 固定中" : "常に表示"}</button>`;
+  const isPastEvent = event.end && event.end < today;
+  const visibilityActions = isPastEvent ? "" : event.alwaysShow
+    ? `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-top-pin="${escapeHtml(event.id)}" aria-pressed="${Boolean(event.pinnedAt)}" aria-label="${event.pinnedAt ? "上部固定を解除" : "上部に固定"}" title="${event.pinnedAt ? "上部固定を解除" : "上部に固定"}">${event.pinnedAt ? "上部固定中" : "上部に固定"}</button><button class="text-button event-unshow" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}">常に表示を解除</button>`
+    : `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}" aria-label="イベントと長期計画を常に表示" title="イベントと長期計画を常に表示">常に表示</button>`;
   return `<article class="event-card">
     <div class="event-heading">
       <div class="card-top"><div><button class="card-title detail-title" type="button" data-event-details="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)}の詳細を表示">${escapeHtml(event.title)}</button><p class="card-subtitle">${eventDates}</p></div>
         <span class="badge">${typeLabel}</span>
       </div>
-      <div class="event-actions">${alwaysShowButton}<button class="text-button icon-action" type="button" data-edit-event="${escapeHtml(event.id)}" aria-label="イベントを編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-event="${escapeHtml(event.id)}" aria-label="イベントを削除" title="削除">🗑️</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
+      <div class="event-actions">${visibilityActions}<button class="text-button icon-action" type="button" data-edit-event="${escapeHtml(event.id)}" aria-label="イベントを編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-event="${escapeHtml(event.id)}" aria-label="イベントを削除" title="削除">🗑️</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
     </div>
     <div class="event-goals">${eventGoals.length
       ? eventGoals.map((goal) => renderGoalCard(goal)).join("")
@@ -1235,7 +1238,6 @@ function renderCalendar() {
       const overMinimum = hasOverMinimumRecordForDate(date);
       cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}${heatLevel ? ` study-level-${heatLevel}` : ""}${overMinimum ? " is-over-minimum" : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}${studySeconds ? `、勉強時間${formatDuration(studySeconds)}` : ""}${overMinimum ? "、最低量を超えた実績あり" : ""}" aria-pressed="${selected}">
         <span class="calendar-day-number">${Number(date.slice(-2))}</span>
-        ${overMinimum ? '<span class="calendar-over-minimum" aria-hidden="true">達成+</span>' : ""}
         ${quizzes.slice(0, 2).map((quiz) => `<span class="calendar-marker quiz">${escapeHtml(quiz.subject)}${quiz.period ? ` ${quiz.period}校時` : ""} ${quiz.kind === "submission" ? `提出物${quiz.title ? ` ${escapeHtml(quiz.title)}` : ""}` : "小テスト"}</span>`).join("")}
         ${quizzes.length > 2 ? `<span class="calendar-marker-more">ほか${quizzes.length - 2}件</span>` : ""}
         ${studyMinutes ? `<span class="calendar-study-time" title="勉強時間 ${formatDuration(studySeconds)}">${formatCalendarDuration(studySeconds)}</span>` : ""}
@@ -1892,6 +1894,20 @@ document.addEventListener("click", (event) => {
     const item = state.events.find((eventItem) => eventItem.id === toggleEventVisibilityButton.dataset.toggleEventAlwaysShow);
     if (!item) return;
     item.alwaysShow = !item.alwaysShow;
+    if (!item.alwaysShow) item.pinnedAt = 0;
+    saveState();
+    return;
+  }
+  const toggleEventTopPinButton = event.target.closest("[data-toggle-event-top-pin]");
+  if (toggleEventTopPinButton) {
+    const item = state.events.find((eventItem) => eventItem.id === toggleEventTopPinButton.dataset.toggleEventTopPin);
+    if (!item || !item.alwaysShow) return;
+    if (item.pinnedAt) {
+      item.pinnedAt = 0;
+    } else {
+      const latestPinnedAt = Math.max(0, ...state.events.map((eventItem) => eventItem.pinnedAt || 0));
+      item.pinnedAt = Math.max(Date.now(), latestPinnedAt + 1);
+    }
     saveState();
     return;
   }
@@ -2335,6 +2351,7 @@ eventForm.addEventListener("submit", (event) => {
     end,
     memo: String(data.get("memo") || "").trim(),
     alwaysShow: Boolean(existingEvent?.alwaysShow),
+    pinnedAt: existingEvent?.pinnedAt || 0,
   };
   if (form.dataset.editId) {
     const index = state.events.findIndex((item) => item.id === form.dataset.editId);

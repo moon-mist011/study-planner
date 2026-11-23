@@ -112,7 +112,7 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .mini-calendar-cell-empty { background: #fafbf9; }
 .mini-calendar-cell.is-selected { outline: 2px solid #74ad86; outline-offset: -2px; background: #f7fbf7; }
 .mini-calendar-cell.is-over-minimum { position: relative; }
-.mini-calendar-cell.is-over-minimum::after { position: absolute; inset: 2px; border: 2px solid var(--orange); border-radius: 4px; content: ""; pointer-events: none; }
+.mini-calendar-cell.is-over-minimum::after { position: absolute; inset: 0; border: 2px solid var(--orange); content: ""; pointer-events: none; }
 .mini-calendar-cell.is-today > span { display: grid; width: 19px; height: 19px; place-items: center; margin-top: -3px; border-radius: 50%; color: white; background: var(--green); font-weight: 700; }
 .mini-calendar-submission-band { align-self: center; height: 5px; margin: 0 3px; border-radius: 3px; background: #f2dfbd; }
 .mini-calendar-popover { position: absolute; right: 12px; bottom: 12px; left: 12px; z-index: 3; max-height: 60%; overflow-y: auto; padding: 12px; border: 1px solid #dfe8df; border-radius: 10px; background: rgba(255,255,255,.97); box-shadow: 0 8px 26px rgba(38,63,49,.16); }
@@ -246,10 +246,9 @@ button.calendar-cell:hover { background: #f7faf6; }
 .calendar-cell.study-level-3 { background: #d7eadb; }
 .calendar-cell.study-level-4 { background: #c4e0ca; }
 .calendar-cell.study-level-5 { background: #acd2b5; }
-.calendar-cell.is-over-minimum::after { position: absolute; inset: 3px; border: 2px solid var(--orange); border-radius: 6px; content: ""; pointer-events: none; }
+.calendar-cell.is-over-minimum::after { position: absolute; inset: 0; border: 2px solid var(--orange); content: ""; pointer-events: none; }
 .calendar-day-number { position: absolute; top: 5px; left: 5px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; font-size: 10px; }
 .calendar-cell.is-today .calendar-day-number { color: white; background: var(--green); font-weight: 700; }
-.calendar-over-minimum { position: absolute; top: 7px; right: 6px; padding: 2px 5px; border-radius: 99px; color: #8c4c1c; background: #fff1e5; font-size: 8px; font-weight: 700; line-height: 1.3; }
 .calendar-study-time { position: absolute; right: 4px; bottom: 4px; z-index: 1; color: #426d51; font-size: 8px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .calendar-marker { overflow: hidden; padding: 3px 4px; border-radius: 4px; color: #8b6943; background: #fbf3e7; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
 .calendar-marker.quiz { color: #8b6943; background: #fbf3e7; }
