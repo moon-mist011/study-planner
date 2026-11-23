@@ -61,8 +61,15 @@
         </div>
       </section>
 
+      <nav class="section-jump-nav" aria-label="ホームの各セクションへ移動">
+        <a class="button button-secondary button-small" href="#events-long-term">イベント・長期計画</a>
+        <a class="button button-secondary button-small" href="#quiz-schedule">小テスト・提出物</a>
+        <a class="button button-secondary button-small" href="#weekly-pools">週間プール</a>
+        <a class="button button-secondary button-small" href="#past-tasks">過去</a>
+      </nav>
+
       <div class="dashboard-grid">
-        <section class="panel goals-panel" aria-labelledby="events-heading">
+        <section class="panel goals-panel" id="events-long-term" aria-labelledby="events-heading">
           <div class="section-heading">
             <div>
               <p class="eyebrow">EVENTS &amp; LONG-TERM</p>
@@ -84,7 +91,7 @@
           </div>
         </section>
 
-        <section class="panel quizzes-panel" aria-labelledby="quizzes-heading">
+        <section class="panel quizzes-panel" id="quiz-schedule" aria-labelledby="quizzes-heading">
           <div class="section-heading">
             <div>
               <p class="eyebrow">QUIZ SCHEDULE</p>
@@ -135,7 +142,7 @@
         </section>
       </div>
 
-      <section class="past-tasks-section panel" aria-labelledby="past-tasks-heading">
+      <section class="past-tasks-section panel" id="past-tasks" aria-labelledby="past-tasks-heading">
         <div class="section-heading">
           <div>
             <p class="eyebrow">PAST</p>
@@ -254,6 +261,20 @@
             </section>
           </section>
         </div>
+        <section class="calendar-study-archive" aria-labelledby="calendar-archive-title">
+          <h2 id="calendar-archive-title">アーカイブ</h2>
+          <div class="calendar-archive-layout">
+            <section class="calendar-archive-total" aria-labelledby="calendar-archive-total-title">
+              <h3 id="calendar-archive-total-title">合計学習時間</h3>
+              <p id="calendar-archive-total"></p>
+            </section>
+            <section class="calendar-archive-monthly" aria-labelledby="calendar-archive-monthly-title">
+              <h3 id="calendar-archive-monthly-title">月別学習時間</h3>
+              <ol id="calendar-archive-month-list" class="calendar-archive-month-list"></ol>
+              <p id="calendar-archive-empty" class="muted-empty">勉強時間の記録はありません。</p>
+            </section>
+          </div>
+        </section>
       </section>
     </main>
 

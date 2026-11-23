@@ -80,6 +80,9 @@ const elements = {
   calendarStudyTotal: document.querySelector("#calendar-study-total"),
   calendarStudyList: document.querySelector("#calendar-study-list"),
   calendarStudyEmpty: document.querySelector("#calendar-study-empty"),
+  calendarArchiveTotal: document.querySelector("#calendar-archive-total"),
+  calendarArchiveMonthList: document.querySelector("#calendar-archive-month-list"),
+  calendarArchiveEmpty: document.querySelector("#calendar-archive-empty"),
 };
 
 let today = dateKeyInJst(new Date());
@@ -587,6 +590,7 @@ function render() {
   renderSummary();
   renderPoolOptions();
   renderRecording();
+  if (!elements.calendarView.hidden) renderCalendar();
 }
 
 function formatDuration(seconds) {
@@ -1222,6 +1226,43 @@ function renderCalendar() {
   }
   elements.calendarGrid.innerHTML = weeks.join("");
   renderCalendarAgenda();
+  renderStudyArchive();
+}
+
+function renderStudyArchive() {
+  const monthlySeconds = new Map();
+  const addStudyTime = (date, seconds) => {
+    if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const recordedSeconds = Number(seconds);
+    if (!Number.isFinite(recordedSeconds) || recordedSeconds <= 0) return;
+    const month = date.slice(0, 7);
+    monthlySeconds.set(month, (monthlySeconds.get(month) || 0) + recordedSeconds);
+  };
+
+  state.tasks.forEach((task) => {
+    addStudyTime(task.date, task.studySeconds);
+    (task.studyLogs || []).forEach((log) => addStudyTime(log.date, log.seconds));
+    if (state.studyTimer?.taskId === task.id && state.studyTimer.startedAt) {
+      addStudyTime(task.date, Math.max(0, Math.floor((Date.now() - state.studyTimer.startedAt) / 1000)));
+    }
+  });
+
+  const months = [...monthlySeconds].sort(([first], [second]) => first.localeCompare(second));
+  const totalSeconds = months.reduce((total, [, seconds]) => total + seconds, 0);
+  const longestMonth = Math.max(0, ...months.map(([, seconds]) => seconds));
+  elements.calendarArchiveTotal.textContent = formatDuration(totalSeconds);
+  elements.calendarArchiveEmpty.hidden = months.length > 0;
+  elements.calendarArchiveMonthList.innerHTML = months.map(([month, seconds]) => {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const label = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long" })
+      .format(new Date(year, monthNumber - 1, 1));
+    const barWidth = Math.max(3, (seconds / longestMonth) * 100);
+    return `<li class="calendar-archive-month">
+      <span class="calendar-archive-month-label">${label}</span>
+      <span class="calendar-archive-bar-track" aria-hidden="true"><span class="calendar-archive-bar" style="width:${barWidth}%"></span></span>
+      <time>${formatDuration(seconds)}</time>
+    </li>`;
+  }).join("");
 }
 
 function renderCalendarAgenda() {
@@ -2833,42 +2874,72 @@ document.querySelectorAll("dialog").forEach((dialog) => {
 const bottomNavDesktop = window.matchMedia("(min-width: 701px)");
 const bottomNavScrollPositions = new WeakMap();
 let bottomNavShowTimer = null;
+let bottomNavTouchStart = null;
+
+function showBottomNav() {
+  elements.bottomNav.classList.remove("is-hidden");
+}
+
+function hideBottomNav() {
+  if (bottomNavDesktop.matches) {
+    showBottomNav();
+    return;
+  }
+  elements.bottomNav.classList.add("is-hidden");
+}
+
+function scheduleBottomNavShow() {
+  window.clearTimeout(bottomNavShowTimer);
+  if (bottomNavDesktop.matches) return;
+  bottomNavShowTimer = window.setTimeout(showBottomNav, 500);
+}
 
 function handleBottomNavScroll(scrollTarget) {
   if (bottomNavDesktop.matches) {
     window.clearTimeout(bottomNavShowTimer);
-    elements.bottomNav.classList.remove("is-hidden");
+    showBottomNav();
     return;
   }
   const currentY = scrollTarget === window ? window.scrollY : scrollTarget.scrollTop;
-  const position = bottomNavScrollPositions.get(scrollTarget) || {
-    y: currentY,
-    direction: 0,
-    distance: 0,
-  };
-  const delta = currentY - position.y;
-  if (delta) {
-    const direction = Math.sign(delta);
-    position.distance = direction === position.direction ? position.distance + Math.abs(delta) : Math.abs(delta);
-    position.direction = direction;
-    position.y = currentY;
-    if (currentY <= 0 || position.distance >= 8) {
-      elements.bottomNav.classList.toggle("is-hidden", direction > 0 && currentY > 0);
-    }
-    bottomNavScrollPositions.set(scrollTarget, position);
-  }
-  window.clearTimeout(bottomNavShowTimer);
-  bottomNavShowTimer = window.setTimeout(() => {
-    elements.bottomNav.classList.remove("is-hidden");
-  }, 500);
+  const previousY = bottomNavScrollPositions.get(scrollTarget) ?? currentY;
+  const delta = currentY - previousY;
+  bottomNavScrollPositions.set(scrollTarget, currentY);
+  if (currentY <= 0 || delta < 0) showBottomNav();
+  else if (delta > 0) hideBottomNav();
+  scheduleBottomNavShow();
 }
 
 window.addEventListener("scroll", () => handleBottomNavScroll(window), { passive: true });
 elements.recordingView.addEventListener("scroll", () => handleBottomNavScroll(elements.recordingView), { passive: true });
+document.addEventListener("touchstart", (event) => {
+  if (bottomNavDesktop.matches || event.touches.length !== 1) {
+    bottomNavTouchStart = null;
+    return;
+  }
+  const touch = event.touches[0];
+  bottomNavTouchStart = { x: touch.clientX, y: touch.clientY };
+}, { passive: true });
+document.addEventListener("touchmove", (event) => {
+  if (!bottomNavTouchStart || event.touches.length !== 1) return;
+  const touch = event.touches[0];
+  const deltaX = touch.clientX - bottomNavTouchStart.x;
+  const deltaY = touch.clientY - bottomNavTouchStart.y;
+  if (Math.abs(deltaY) < 8 || Math.abs(deltaY) <= Math.abs(deltaX)) return;
+  if (deltaY < 0) hideBottomNav();
+  else showBottomNav();
+}, { passive: true });
+document.addEventListener("touchend", () => {
+  bottomNavTouchStart = null;
+  scheduleBottomNavShow();
+}, { passive: true });
+document.addEventListener("touchcancel", () => {
+  bottomNavTouchStart = null;
+  scheduleBottomNavShow();
+}, { passive: true });
 window.addEventListener("resize", () => {
   if (bottomNavDesktop.matches) {
     window.clearTimeout(bottomNavShowTimer);
-    elements.bottomNav.classList.remove("is-hidden");
+    showBottomNav();
   }
 }, { passive: true });
 
