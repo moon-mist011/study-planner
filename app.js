@@ -53,6 +53,7 @@ const elements = {
   settingsDialog: document.querySelector("#settings-dialog"),
   settingsSubjects: document.querySelector("#settings-subject-list"),
   menuDialog: document.querySelector("#menu-dialog"),
+  bottomNav: document.querySelector(".bottom-nav"),
   calendarView: document.querySelector("#calendar-view"),
   recordingView: document.querySelector("#recording-view"),
   recordingTaskSelect: document.querySelector("#recording-task-select"),
@@ -2828,6 +2829,48 @@ document.querySelectorAll("dialog").forEach((dialog) => {
     if (event.target === dialog) dialog.close();
   });
 });
+
+const bottomNavDesktop = window.matchMedia("(min-width: 701px)");
+const bottomNavScrollPositions = new WeakMap();
+let bottomNavShowTimer = null;
+
+function handleBottomNavScroll(scrollTarget) {
+  if (bottomNavDesktop.matches) {
+    window.clearTimeout(bottomNavShowTimer);
+    elements.bottomNav.classList.remove("is-hidden");
+    return;
+  }
+  const currentY = scrollTarget === window ? window.scrollY : scrollTarget.scrollTop;
+  const position = bottomNavScrollPositions.get(scrollTarget) || {
+    y: currentY,
+    direction: 0,
+    distance: 0,
+  };
+  const delta = currentY - position.y;
+  if (delta) {
+    const direction = Math.sign(delta);
+    position.distance = direction === position.direction ? position.distance + Math.abs(delta) : Math.abs(delta);
+    position.direction = direction;
+    position.y = currentY;
+    if (currentY <= 0 || position.distance >= 8) {
+      elements.bottomNav.classList.toggle("is-hidden", direction > 0 && currentY > 0);
+    }
+    bottomNavScrollPositions.set(scrollTarget, position);
+  }
+  window.clearTimeout(bottomNavShowTimer);
+  bottomNavShowTimer = window.setTimeout(() => {
+    elements.bottomNav.classList.remove("is-hidden");
+  }, 500);
+}
+
+window.addEventListener("scroll", () => handleBottomNavScroll(window), { passive: true });
+elements.recordingView.addEventListener("scroll", () => handleBottomNavScroll(elements.recordingView), { passive: true });
+window.addEventListener("resize", () => {
+  if (bottomNavDesktop.matches) {
+    window.clearTimeout(bottomNavShowTimer);
+    elements.bottomNav.classList.remove("is-hidden");
+  }
+}, { passive: true });
 
 setAuthenticatedView(false);
 initializeAuth();
