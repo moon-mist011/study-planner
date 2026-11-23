@@ -31,8 +31,8 @@ button { cursor: pointer; }
 .sync-status { color: #75847c; font-size: 10px; }
 .sync-status.error { color: #b84d42; }
 .sync-error { margin: 0 0 16px; padding: 11px 14px; border: 1px solid #f0d7d2; border-radius: 9px; color: #a64b40; background: #fff7f5; font-size: 12px; line-height: 1.6; }
-.page-shell { max-width: 1120px; margin: 0 auto; padding: 45px 24px 24px; }
-.auth-screen { display: grid; min-height: calc(100vh - 66px); place-items: center; padding-top: 24px; padding-bottom: 24px; }
+.page-shell { max-width: 1120px; margin: 0 auto; padding: 45px 24px calc(88px + env(safe-area-inset-bottom)); }
+.auth-screen { display: grid; min-height: calc(100vh - 130px - env(safe-area-inset-bottom)); place-items: center; padding-top: 24px; padding-bottom: 24px; }
 .auth-panel { width: min(520px, 100%); padding: 38px; }
 .auth-panel h1 { margin-bottom: 12px; }
 .auth-message { min-height: 22px; margin: 20px 0 12px; color: #738078; font-size: 12px; line-height: 1.7; }
@@ -175,9 +175,12 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .menu-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 2px 3px 8px; color: #7d8982; font-size: 11px; font-weight: 700; }
 .menu-item { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 12px 10px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; text-align: left; font-size: 13px; }
 .menu-item:hover { color: var(--green); background: #f1f7f1; }
+.bottom-nav { position: fixed; z-index: 30; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 8px max(12px, calc((100% - 560px) / 2)) calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid #e9ece7; background: rgba(255,255,255,.96); }
+.bottom-nav-item { min-width: 0; min-height: 48px; padding: 0 6px; border: 0; border-radius: 8px; color: #526259; background: transparent; font-size: 12px; font-weight: 600; }
+.bottom-nav-item:hover, .bottom-nav-item:focus-visible { color: var(--green); background: #f1f7f1; }
 .recording-fullscreen { overflow: hidden; }
-.recording-view { position: fixed; inset: 66px 0 0; z-index: 20; overflow-y: auto; background: radial-gradient(ellipse at 50% 35%, #fff 0%, #f6f7f2 72%); }
-.recording-session, .recording-task-select { display: grid; min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); place-items: center; padding: 32px 20px; }
+.recording-view { position: fixed; inset: 66px 0 calc(64px + env(safe-area-inset-bottom)); z-index: 20; overflow-y: auto; background: radial-gradient(ellipse at 50% 35%, #fff 0%, #f6f7f2 72%); }
+.recording-session, .recording-task-select { display: grid; min-height: calc(100vh - 130px - env(safe-area-inset-bottom)); min-height: calc(100dvh - 130px - env(safe-area-inset-bottom)); place-items: center; padding: 32px 20px; }
 .recording-content { width: min(760px, 100%); text-align: center; }
 .recording-content .eyebrow, .recording-select-content .eyebrow { color: #93a198; }
 .recording-task-title { margin: 0 0 14px; color: var(--green-dark); font-size: clamp(20px, 4vw, 30px); line-height: 1.4; overflow-wrap: anywhere; }
@@ -311,19 +314,19 @@ button.calendar-cell:hover { background: #f7faf6; }
 
 @media (max-width: 700px) {
   .topbar { height: 58px; padding: 0 18px; }
-  .recording-view { inset: 58px 0 0; }
-  .recording-session, .recording-task-select { min-height: calc(100vh - 58px); min-height: calc(100dvh - 58px); }
+  .recording-view { inset: 58px 0 calc(64px + env(safe-area-inset-bottom)); }
+  .recording-session, .recording-task-select { min-height: calc(100vh - 122px - env(safe-area-inset-bottom)); min-height: calc(100dvh - 122px - env(safe-area-inset-bottom)); }
   .auth-controls { gap: 6px; }
   .auth-controls .topbar-note { max-width: 95px; font-size: 10px; }
   .sync-status { display: none; }
-  .auth-screen { min-height: calc(100vh - 58px); }
+  .auth-screen { min-height: calc(100vh - 122px - env(safe-area-inset-bottom)); }
   .auth-panel { padding: 27px 22px; }
   .menu-dialog { top: 66px; left: 12px; }
   .recording-session, .recording-task-select { padding: 24px 18px; }
   .recording-button { min-width: 130px; }
   .recording-actions { gap: 8px; margin-top: 24px; }
   .topbar-note { font-size: 10px; }
-  .page-shell { padding: 25px 14px 16px; }
+  .page-shell { padding: 25px 14px calc(80px + env(safe-area-inset-bottom)); }
   .welcome { min-height: 112px; margin-bottom: 18px; }
   .welcome-stats { width: 95px; padding: 11px 8px; border-radius: 11px; }
   .stat-number { font-size: 19px; }
@@ -370,4 +373,23 @@ button.calendar-cell:hover { background: #f7faf6; }
   .task-card-summary { align-items: flex-start; }
   .task-main { flex: 1 1 auto; }
   .task-remainder { max-width: 42%; }
+}
+
+@media (min-width: 701px) {
+  body { padding-left: 164px; }
+  .page-shell { padding-bottom: 24px; }
+  .auth-screen { min-height: calc(100vh - 66px); }
+  .bottom-nav { top: 0; right: auto; bottom: 0; left: 0; width: 164px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 24px 12px; border-top: 0; border-right: 1px solid #e9ece7; }
+  .bottom-nav-item { width: 100%; padding: 0 14px; text-align: left; }
+  .recording-view { bottom: 0; left: 164px; }
+  .recording-session, .recording-task-select { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); }
+}
+
+@media (min-width: 701px) and (max-width: 900px) {
+  .topbar { padding: 0 16px; }
+  .auth-controls { gap: 6px; }
+  .auth-controls .topbar-note { max-width: 95px; font-size: 10px; }
+  .sync-status { display: none; }
+  .dashboard-grid, .calendar-layout { grid-template-columns: 1fr; }
+  .calendar-layout { gap: 14px; }
 }

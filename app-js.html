@@ -701,9 +701,13 @@ function renderRecording() {
   renderRecordingClock();
 }
 
+function closeMenuDialog() {
+  if (elements.menuDialog.open) elements.menuDialog.close();
+}
+
 function openRecordingView() {
   selectingRecordingTask = !getRecordingTask();
-  elements.menuDialog.close();
+  closeMenuDialog();
   elements.dashboard.hidden = true;
   elements.calendarView.hidden = true;
   elements.recordingView.hidden = false;
@@ -1646,7 +1650,7 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (event.target.closest("[data-menu-calendar]")) {
-    elements.menuDialog.close();
+    closeMenuDialog();
     calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     selectedCalendarDate = today;
     renderCalendar();
@@ -1658,7 +1662,7 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (event.target.closest("[data-menu-home]")) {
-    elements.menuDialog.close();
+    closeMenuDialog();
     elements.calendarView.hidden = true;
     elements.recordingView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
