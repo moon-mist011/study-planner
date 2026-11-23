@@ -159,7 +159,7 @@ function normalizeState(stored) {
     event.memo = typeof event.memo === "string" ? event.memo.slice(0, 2000) : "";
     event.alwaysShow = Boolean(event.alwaysShow);
     const pinnedAt = Number(event.pinnedAt);
-    event.pinnedAt = event.alwaysShow && Number.isSafeInteger(pinnedAt) && pinnedAt > 0 ? pinnedAt : 0;
+    event.pinnedAt = Number.isSafeInteger(pinnedAt) && pinnedAt > 0 ? pinnedAt : 0;
   });
   goals.forEach((goal) => {
     goal.memo = typeof goal.memo === "string" ? goal.memo.slice(0, 2000) : "";
@@ -913,10 +913,10 @@ function renderEvents() {
   const compareUpcomingEvents = (a, b) => (a.start || "9999-12-31").localeCompare(b.start || "9999-12-31")
     || (a.end || "9999-12-31").localeCompare(b.end || "9999-12-31");
   const currentEvents = upcomingEvents
-    .filter((event) => event.alwaysShow || !event.start || event.start < futureThreshold)
+    .filter((event) => event.pinnedAt || event.alwaysShow || !event.start || event.start < futureThreshold)
     .sort((a, b) => (b.pinnedAt || 0) - (a.pinnedAt || 0) || compareUpcomingEvents(a, b));
   const futureEvents = upcomingEvents
-    .filter((event) => !event.alwaysShow && event.start && event.start >= futureThreshold)
+    .filter((event) => !event.pinnedAt && !event.alwaysShow && event.start && event.start >= futureThreshold)
     .sort(compareUpcomingEvents);
   elements.eventsEmpty.hidden = currentEvents.length > 0;
   elements.futureEventsEmpty.hidden = futureEvents.length > 0;
@@ -1029,11 +1029,12 @@ function renderEventCard(event, isInFutureList = false) {
     ? `${formatDate(event.start)} — ${formatDate(event.end)}`
     : "日程未設定";
   const isPastEvent = event.end && event.end < today;
+  const topPinButton = `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-top-pin="${escapeHtml(event.id)}" aria-pressed="${Boolean(event.pinnedAt)}" aria-label="${event.pinnedAt ? "上部固定を解除" : "上部に固定"}" title="${event.pinnedAt ? "上部固定を解除" : "上部に固定"}">${event.pinnedAt ? "上部固定中" : "上部に固定"}</button>`;
   const visibilityActions = isPastEvent ? "" : event.alwaysShow
-    ? `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-top-pin="${escapeHtml(event.id)}" aria-pressed="${Boolean(event.pinnedAt)}" aria-label="${event.pinnedAt ? "上部固定を解除" : "上部に固定"}" title="${event.pinnedAt ? "上部固定を解除" : "上部に固定"}">${event.pinnedAt ? "上部固定中" : "上部に固定"}</button><button class="text-button event-unshow" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}">常に表示を解除</button>`
+    ? `${topPinButton}<button class="text-button event-unshow" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}">常に表示を解除</button>`
     : isInFutureList
       ? `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}" aria-label="イベントと長期計画を常に表示" title="イベントと長期計画を常に表示">常に表示</button>`
-      : "";
+      : topPinButton;
   return `<article class="event-card">
     <div class="event-heading">
       <div class="card-top"><div><button class="card-title detail-title" type="button" data-event-details="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)}の詳細を表示">${escapeHtml(event.title)}</button><p class="card-subtitle">${eventDates}</p></div>
@@ -1903,7 +1904,7 @@ document.addEventListener("click", (event) => {
   const toggleEventTopPinButton = event.target.closest("[data-toggle-event-top-pin]");
   if (toggleEventTopPinButton) {
     const item = state.events.find((eventItem) => eventItem.id === toggleEventTopPinButton.dataset.toggleEventTopPin);
-    if (!item || !item.alwaysShow) return;
+    if (!item) return;
     if (item.pinnedAt) {
       item.pinnedAt = 0;
     } else {
