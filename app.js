@@ -50,7 +50,8 @@ const elements = {
   carryPoolDialog: document.querySelector("#carry-pool-dialog"),
   carryOverdueDialog: document.querySelector("#carry-overdue-dialog"),
   studyLogDialog: document.querySelector("#study-log-dialog"),
-  settingsDialog: document.querySelector("#settings-dialog"),
+  settingsView: document.querySelector("#settings-view"),
+  settingsDialog: document.querySelector("#settings-view"),
   settingsSubjects: document.querySelector("#settings-subject-list"),
   menuDialog: document.querySelector("#menu-dialog"),
   bottomNav: document.querySelector(".bottom-nav"),
@@ -156,6 +157,7 @@ function normalizeState(stored) {
   const goals = Array.isArray(stored.goals) ? stored.goals : [];
   events.forEach((event) => {
     event.memo = typeof event.memo === "string" ? event.memo.slice(0, 2000) : "";
+    event.alwaysShow = Boolean(event.alwaysShow);
   });
   goals.forEach((goal) => {
     goal.memo = typeof goal.memo === "string" ? goal.memo.slice(0, 2000) : "";
@@ -331,6 +333,7 @@ function setAuthenticatedView(isReady) {
   elements.authScreen.hidden = isReady;
   elements.dashboard.hidden = !isReady;
   elements.recordingView.hidden = true;
+  elements.settingsView.hidden = true;
   document.body.classList.remove("recording-fullscreen");
   elements.authUser.hidden = !currentUser;
   elements.authUser.textContent = currentUser?.displayName || currentUser?.email || "";
@@ -636,6 +639,16 @@ function getStudySecondsForDate(date) {
     .reduce((total, task) => total + getTaskStudySecondsOnDate(task, date), 0);
 }
 
+function hasOverMinimumRecordForDate(date) {
+  return state.tasks.some((task) => {
+    const minimum = Number(task.minimum);
+    return task.date === date
+      && Number.isSafeInteger(minimum)
+      && minimum > 0
+      && getTaskStudyRecordOnDate(task, date).amount > minimum;
+  });
+}
+
 function studyHeatLevel(seconds) {
   const minutes = Math.floor(seconds / 60);
   if (minutes === 0) return 0;
@@ -702,11 +715,31 @@ function closeMenuDialog() {
   if (elements.menuDialog.open) elements.menuDialog.close();
 }
 
+function openSettingsView() {
+  closeMenuDialog();
+  renderSettingsForm();
+  elements.dashboard.hidden = true;
+  elements.calendarView.hidden = true;
+  elements.recordingView.hidden = true;
+  elements.settingsView.hidden = false;
+  document.body.classList.remove("recording-fullscreen");
+  window.scrollTo({ top: 0 });
+}
+
+function openSettingsHome() {
+  elements.settingsView.hidden = true;
+  elements.calendarView.hidden = true;
+  elements.recordingView.hidden = true;
+  elements.dashboard.hidden = !elements.authScreen.hidden;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function openRecordingView() {
   selectingRecordingTask = !getRecordingTask();
   closeMenuDialog();
   elements.dashboard.hidden = true;
   elements.calendarView.hidden = true;
+  elements.settingsView.hidden = true;
   elements.recordingView.hidden = false;
   document.body.classList.add("recording-fullscreen");
   renderRecording();
@@ -878,10 +911,10 @@ function renderEvents() {
   const compareUpcomingEvents = (a, b) => (a.start || "9999-12-31").localeCompare(b.start || "9999-12-31")
     || (a.end || "9999-12-31").localeCompare(b.end || "9999-12-31");
   const currentEvents = upcomingEvents
-    .filter((event) => !event.start || event.start < futureThreshold)
+    .filter((event) => event.alwaysShow || !event.start || event.start < futureThreshold)
     .sort(compareUpcomingEvents);
   const futureEvents = upcomingEvents
-    .filter((event) => event.start && event.start >= futureThreshold)
+    .filter((event) => !event.alwaysShow && event.start && event.start >= futureThreshold)
     .sort(compareUpcomingEvents);
   elements.eventsEmpty.hidden = currentEvents.length > 0;
   elements.futureEventsEmpty.hidden = futureEvents.length > 0;
@@ -993,12 +1026,15 @@ function renderEventCard(event) {
   const eventDates = event.start && event.end
     ? `${formatDate(event.start)} — ${formatDate(event.end)}`
     : "日程未設定";
+  const alwaysShowButton = event.end && event.end < today
+    ? ""
+    : `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}" aria-pressed="${Boolean(event.alwaysShow)}" aria-label="${event.alwaysShow ? "常に表示を解除" : "イベントと長期計画を常に表示"}" title="${event.alwaysShow ? "常に表示を解除" : "イベントと長期計画を常に表示"}">${event.alwaysShow ? "📌 固定中" : "常に表示"}</button>`;
   return `<article class="event-card">
     <div class="event-heading">
       <div class="card-top"><div><button class="card-title detail-title" type="button" data-event-details="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)}の詳細を表示">${escapeHtml(event.title)}</button><p class="card-subtitle">${eventDates}</p></div>
         <span class="badge">${typeLabel}</span>
       </div>
-      <div class="event-actions"><button class="text-button icon-action" type="button" data-edit-event="${escapeHtml(event.id)}" aria-label="イベントを編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-event="${escapeHtml(event.id)}" aria-label="イベントを削除" title="削除">🗑️</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
+      <div class="event-actions">${alwaysShowButton}<button class="text-button icon-action" type="button" data-edit-event="${escapeHtml(event.id)}" aria-label="イベントを編集" title="編集">✏️</button><button class="text-button icon-action delete-button" type="button" data-delete-event="${escapeHtml(event.id)}" aria-label="イベントを削除" title="削除">🗑️</button><button class="button button-secondary button-small" type="button" data-add-goal="${escapeHtml(event.id)}">＋ 長期計画を追加</button></div>
     </div>
     <div class="event-goals">${eventGoals.length
       ? eventGoals.map((goal) => renderGoalCard(goal)).join("")
@@ -1117,7 +1153,8 @@ function renderMiniCalendar() {
       }
       const isToday = date === today;
       const selected = date === miniCalendarSelectedDate;
-      cells.push(`<button class="mini-calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}" type="button" role="gridcell" data-mini-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}" aria-pressed="${selected}">
+      const overMinimum = hasOverMinimumRecordForDate(date);
+      cells.push(`<button class="mini-calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}${overMinimum ? " is-over-minimum" : ""}" type="button" role="gridcell" data-mini-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${overMinimum ? "、最低量を超えた実績あり" : ""}" aria-pressed="${selected}">
         <span>${Number(date.slice(-2))}</span>
       </button>`);
     }
@@ -1195,8 +1232,10 @@ function renderCalendar() {
       const studySeconds = getStudySecondsForDate(date);
       const studyMinutes = Math.floor(studySeconds / 60);
       const heatLevel = studyHeatLevel(studySeconds);
-      cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}${heatLevel ? ` study-level-${heatLevel}` : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}${studySeconds ? `、勉強時間${formatDuration(studySeconds)}` : ""}" aria-pressed="${selected}">
+      const overMinimum = hasOverMinimumRecordForDate(date);
+      cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}${heatLevel ? ` study-level-${heatLevel}` : ""}${overMinimum ? " is-over-minimum" : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}${studySeconds ? `、勉強時間${formatDuration(studySeconds)}` : ""}${overMinimum ? "、最低量を超えた実績あり" : ""}" aria-pressed="${selected}">
         <span class="calendar-day-number">${Number(date.slice(-2))}</span>
+        ${overMinimum ? '<span class="calendar-over-minimum" aria-hidden="true">達成+</span>' : ""}
         ${quizzes.slice(0, 2).map((quiz) => `<span class="calendar-marker quiz">${escapeHtml(quiz.subject)}${quiz.period ? ` ${quiz.period}校時` : ""} ${quiz.kind === "submission" ? `提出物${quiz.title ? ` ${escapeHtml(quiz.title)}` : ""}` : "小テスト"}</span>`).join("")}
         ${quizzes.length > 2 ? `<span class="calendar-marker-more">ほか${quizzes.length - 2}件</span>` : ""}
         ${studyMinutes ? `<span class="calendar-study-time" title="勉強時間 ${formatDuration(studySeconds)}">${formatCalendarDuration(studySeconds)}</span>` : ""}
@@ -1424,7 +1463,11 @@ function saveStateAndClose(dialog, form) {
     showError(form, "ログイン状態を確認できません。再読み込みしてから、もう一度お試しください。");
     return false;
   }
-  dialog.close();
+  if (dialog === elements.settingsDialog) {
+    openSettingsHome();
+  } else {
+    dialog.close();
+  }
   render();
   return true;
 }
@@ -1567,7 +1610,10 @@ function openDialog(dialog) {
     form.elements.period.value = "";
     document.querySelector("#quiz-dialog-title").textContent = "予定を追加";
   }
-  if (dialog === elements.settingsDialog) renderSettingsForm();
+  if (dialog === elements.settingsDialog) {
+    renderSettingsForm();
+    return;
+  }
   dialog.showModal();
 }
 
@@ -1609,6 +1655,7 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     elements.calendarView.hidden = true;
     elements.recordingView.hidden = true;
+    elements.settingsView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = !elements.authScreen.hidden;
     miniCalendarSelectedDate = "";
@@ -1624,9 +1671,18 @@ document.addEventListener("click", (event) => {
     openRecordingView();
     return;
   }
+  if (event.target.closest("[data-menu-settings]")) {
+    openSettingsView();
+    return;
+  }
+  if (event.target.closest("[data-settings-home]")) {
+    openSettingsHome();
+    return;
+  }
   if (event.target.closest("[data-record-home]")) {
     selectingRecordingTask = false;
     elements.recordingView.hidden = true;
+    elements.settingsView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1703,6 +1759,7 @@ document.addEventListener("click", (event) => {
     renderCalendar();
     elements.dashboard.hidden = true;
     elements.recordingView.hidden = true;
+    elements.settingsView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.calendarView.hidden = false;
     window.scrollTo({ top: 0 });
@@ -1712,6 +1769,7 @@ document.addEventListener("click", (event) => {
     closeMenuDialog();
     elements.calendarView.hidden = true;
     elements.recordingView.hidden = true;
+    elements.settingsView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = false;
     miniCalendarSelectedDate = "";
@@ -1722,6 +1780,7 @@ document.addEventListener("click", (event) => {
   if (event.target.closest("[data-calendar-home]")) {
     elements.calendarView.hidden = true;
     elements.recordingView.hidden = true;
+    elements.settingsView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.dashboard.hidden = false;
     miniCalendarSelectedDate = "";
@@ -1735,6 +1794,7 @@ document.addEventListener("click", (event) => {
     renderCalendar();
     elements.dashboard.hidden = true;
     elements.recordingView.hidden = true;
+    elements.settingsView.hidden = true;
     document.body.classList.remove("recording-fullscreen");
     elements.calendarView.hidden = false;
     window.scrollTo({ top: 0 });
@@ -1827,6 +1887,14 @@ document.addEventListener("click", (event) => {
     return;
   }
   const editEventButton = event.target.closest("[data-edit-event]");
+  const toggleEventVisibilityButton = event.target.closest("[data-toggle-event-always-show]");
+  if (toggleEventVisibilityButton) {
+    const item = state.events.find((eventItem) => eventItem.id === toggleEventVisibilityButton.dataset.toggleEventAlwaysShow);
+    if (!item) return;
+    item.alwaysShow = !item.alwaysShow;
+    saveState();
+    return;
+  }
   if (editEventButton) {
     const item = state.events.find((eventItem) => eventItem.id === editEventButton.dataset.editEvent);
     if (!item) return;
@@ -2250,8 +2318,13 @@ eventForm.addEventListener("submit", (event) => {
   const title = String(data.get("title")).trim();
   const start = String(data.get("start"));
   const end = String(data.get("end"));
+  const existingEvent = state.events.find((item) => item.id === form.dataset.editId);
   if (!title || start > end) {
     showError(form, "イベント名と期間を正しく入力してください。");
+    return;
+  }
+  if (form.dataset.editId && !existingEvent) {
+    showError(form, "編集するイベントが見つかりません。");
     return;
   }
   const updatedEvent = {
@@ -2261,13 +2334,10 @@ eventForm.addEventListener("submit", (event) => {
     start,
     end,
     memo: String(data.get("memo") || "").trim(),
+    alwaysShow: Boolean(existingEvent?.alwaysShow),
   };
   if (form.dataset.editId) {
     const index = state.events.findIndex((item) => item.id === form.dataset.editId);
-    if (index < 0) {
-      showError(form, "編集するイベントが見つかりません。");
-      return;
-    }
     state.events[index] = updatedEvent;
   } else {
     state.events.push(updatedEvent);

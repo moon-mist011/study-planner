@@ -86,6 +86,7 @@
               <p class="eyebrow">LATER</p>
               <h3>今後の予定</h3>
             </div>
+            <p class="future-events-hint">2ヶ月以上先のイベントは、「常に表示」で長期計画と一緒に上の一覧へ固定できます。</p>
             <div class="card-list" id="future-event-list"></div>
             <p class="muted-empty" id="future-event-empty">2ヶ月以上先に始まるイベントはありません。</p>
           </div>
@@ -166,7 +167,7 @@
       <button class="menu-item" type="button" data-menu-home>ホーム <span aria-hidden="true">→</span></button>
       <button class="menu-item" type="button" data-menu-calendar>カレンダー <span aria-hidden="true">→</span></button>
       <button class="menu-item" type="button" data-menu-record>記録 <span aria-hidden="true">→</span></button>
-      <button class="menu-item" type="button" data-open-dialog="settings-dialog">設定 <span aria-hidden="true">→</span></button>
+      <button class="menu-item" type="button" data-menu-settings>設定 <span aria-hidden="true">→</span></button>
     </dialog>
 
     <nav class="bottom-nav" aria-label="メインメニュー">
@@ -182,7 +183,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6M12 2v3"/></svg>
         <span>記録</span>
       </button>
-      <button class="bottom-nav-item" type="button" data-open-dialog="settings-dialog">
+      <button class="bottom-nav-item" type="button" data-menu-settings>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h6m4 0h6M4 12h2m4 0h10M4 18h10m4 0h2"/><circle cx="12" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>
         <span>設定</span>
       </button>
@@ -237,13 +238,14 @@
             </div>
             <div class="calendar-grid" id="calendar-grid" role="grid" aria-label="月間カレンダー"></div>
             <div class="study-heatmap-legend" aria-label="勉強時間の色分け">
-              <span class="study-heatmap-label">勉強時間</span>
+              <span class="study-heatmap-label">勉強時間・達成状況</span>
               <span class="study-heatmap-key"><i></i>0分</span>
               <span class="study-heatmap-key level-1"><i></i>1分〜30分未満</span>
               <span class="study-heatmap-key level-2"><i></i>30分〜1時間未満</span>
               <span class="study-heatmap-key level-3"><i></i>1時間〜2時間未満</span>
               <span class="study-heatmap-key level-4"><i></i>2時間〜3時間未満</span>
               <span class="study-heatmap-key level-5"><i></i>3時間以上</span>
+              <span class="study-heatmap-key study-over-minimum-key"><i></i>最低量超過</span>
             </div>
           </section>
           <section class="calendar-agenda" aria-live="polite">
@@ -275,6 +277,30 @@
             </section>
           </div>
         </section>
+      </section>
+    </main>
+
+    <main id="settings-view" class="page-shell settings-page" hidden>
+      <section class="settings-panel" aria-labelledby="settings-title">
+        <div class="settings-header">
+          <div><p class="eyebrow">PREFERENCES</p><h1 id="settings-title">設定</h1></div>
+          <button class="button button-secondary button-small" type="button" data-settings-home>ホームへ戻る</button>
+        </div>
+        <form id="settings-form" class="settings-form">
+          <label>1日の校時数
+            <input name="periodCount" type="number" min="1" max="20" step="1" required />
+          </label>
+          <div class="settings-subjects">
+            <div>
+              <p class="settings-label">科目</p>
+              <p class="form-hint">科目名の変更は登録済みの計画・予定にも反映されます。使用中の科目は削除できません。上下ボタンで並び順を変更できます。</p>
+            </div>
+            <div class="settings-subject-list" id="settings-subject-list"></div>
+            <button class="button button-quiet button-small settings-add-subject" type="button" data-add-setting-subject>＋ 科目を追加</button>
+          </div>
+          <p class="form-error" aria-live="polite"></p>
+          <div class="modal-actions"><button class="button button-quiet" type="button" data-settings-home>キャンセル</button><button class="button button-primary" type="submit">設定を保存</button></div>
+        </form>
       </section>
     </main>
 
@@ -508,28 +534,6 @@
         <p class="form-hint" id="study-log-unit">タスクの単位に合わせて入力してください。</p>
         <p class="form-error" aria-live="polite"></p>
         <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">記録を追加</button></div>
-      </form>
-    </dialog>
-
-    <dialog id="settings-dialog" class="modal settings-modal">
-      <form id="settings-form">
-        <div class="modal-heading">
-          <div><p class="eyebrow">PREFERENCES</p><h2>設定</h2></div>
-          <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
-        </div>
-        <label>1日の校時数
-          <input name="periodCount" type="number" min="1" max="20" step="1" required />
-        </label>
-        <div class="settings-subjects">
-          <div>
-            <p class="settings-label">科目</p>
-            <p class="form-hint">科目名の変更は登録済みの計画・予定にも反映されます。使用中の科目は削除できません。上下ボタンで並び順を変更できます。</p>
-          </div>
-          <div class="settings-subject-list" id="settings-subject-list"></div>
-          <button class="button button-quiet button-small settings-add-subject" type="button" data-add-setting-subject>＋ 科目を追加</button>
-        </div>
-        <p class="form-error" aria-live="polite"></p>
-        <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog>キャンセル</button><button class="button button-primary" type="submit">設定を保存</button></div>
       </form>
     </dialog>
 
