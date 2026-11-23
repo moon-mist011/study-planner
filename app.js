@@ -924,15 +924,19 @@ function findSchedulePool(schedule) {
 }
 
 function isScheduleComplete(schedule) {
-  if (schedule.sourceGoalId) {
-    const goal = state.goals.find((item) => item.id === schedule.sourceGoalId);
-    if (goal && goalProgress(goal) >= goal.total * goal.laps) return true;
-  }
   const pool = findSchedulePool(schedule);
   return state.tasks.some((task) => task.completed
     && (schedule.sourceGoalId
-      ? task.poolId === pool?.id
-      : task.quizId === schedule.id || task.poolId === pool?.id));
+      ? task.sourceGoalId === schedule.sourceGoalId || (pool && task.poolId === pool.id)
+      : task.quizId === schedule.id || (pool && task.poolId === pool.id)));
+}
+
+function hasScheduleTaskToday(schedule) {
+  const pool = findSchedulePool(schedule);
+  return state.tasks.some((task) => task.date === today
+    && (schedule.sourceGoalId
+      ? task.sourceGoalId === schedule.sourceGoalId || (pool && task.poolId === pool.id)
+      : task.quizId === schedule.id || (pool && task.poolId === pool.id)));
 }
 
 function createSchedulePool(schedule) {
@@ -942,7 +946,7 @@ function createSchedulePool(schedule) {
     : null;
   const start = getSchedulePoolStart(schedule.date);
   const title = schedule.title || (schedule.kind === "submission" ? "提出物" : "小テスト");
-  state.pools.push({
+  const pool = {
     id: createId(),
     ...(schedule.sourceGoalId ? { sourceGoalId: schedule.sourceGoalId } : { sourceQuizId: schedule.id }),
     eventId: schedule.eventId || goal?.eventId || "",
@@ -960,7 +964,14 @@ function createSchedulePool(schedule) {
     completed: 0,
     status: "active",
     memo: "",
+  };
+  state.pools.push(pool);
+  state.tasks.filter((task) => !task.poolId && (schedule.sourceGoalId
+    ? task.sourceGoalId === schedule.sourceGoalId
+    : task.quizId === schedule.id)).forEach((task) => {
+    task.poolId = pool.id;
   });
+  syncTaskProgress(pool.id);
   return true;
 }
 
@@ -1053,7 +1064,7 @@ function renderQuizzes() {
     const event = state.events.find((item) => item.id === quiz.eventId);
     const matchingPool = findSchedulePool(quiz);
     const completedTask = isScheduleComplete(quiz);
-    const hasTodayTask = state.tasks.some((task) => task.quizId === quiz.id && task.date === today);
+    const hasTodayTask = hasScheduleTaskToday(quiz);
     const poolButton = matchingPool || completedTask
       ? ""
       : `<button class="text-button" type="button" data-add-schedule-pool="${escapeHtml(quiz.sourceGoalId || quiz.id)}" data-schedule-source="${quiz.sourceGoalId ? "goal" : "quiz"}">週間プールへ</button>`;
@@ -1061,7 +1072,7 @@ function renderQuizzes() {
       ? `${poolButton}<button class="text-button icon-action" type="button" data-edit-goal="${escapeHtml(quiz.sourceGoalId)}" aria-label="長期計画を編集" title="編集">✏️</button>`
       : `<button class="text-button icon-action" type="button" data-edit-quiz="${escapeHtml(quiz.id)}" aria-label="予定を編集" title="編集">✏️</button>
          ${poolButton}
-         ${hasTodayTask ? "" : `<button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}">今日のToDoへ</button>`}
+         ${completedTask || hasTodayTask ? "" : `<button class="text-button" type="button" data-add-quiz-task="${escapeHtml(quiz.id)}">今日のToDoへ</button>`}
          <button class="text-button icon-action" type="button" data-duplicate-quiz="${escapeHtml(quiz.id)}" aria-label="予定を複製" title="複製">📑</button>
          <button class="text-button icon-action delete-button" type="button" data-delete-quiz="${escapeHtml(quiz.id)}" aria-label="予定を削除" title="削除">🗑️</button>`;
     return `<article class="quiz-card${completedTask ? " completed" : ""}">
@@ -1329,7 +1340,7 @@ function getTaskStudyRecordOnDate(task, date) {
 }
 
 function getStudyTaskGroupKey(task) {
-  return task.poolId || task.quizId || task.id;
+  return task.poolId || task.quizId || task.sourceGoalId || task.id;
 }
 
 function hasTaskProgress(task) {
@@ -1344,8 +1355,9 @@ function canReturnTaskToPool(task) {
     const pool = state.pools.find((item) => item.id === task.poolId);
     return pool?.status === "active";
   }
-  if (!task.quizId) return false;
-  const quiz = state.quizzes.find((item) => item.id === task.quizId);
+  const quiz = getScheduledQuizzes().find((item) => task.sourceGoalId
+    ? item.sourceGoalId === task.sourceGoalId
+    : item.id === task.quizId);
   if (!quiz) return false;
   const pool = findSchedulePool(quiz);
   return !pool || pool.status === "active";
@@ -1429,7 +1441,7 @@ function deleteEvent(eventId) {
     if (quiz.eventId === eventId) quiz.eventId = "";
   });
   state.pools = state.pools.filter((pool) => !poolIds.has(pool.id));
-  state.tasks = state.tasks.filter((task) => !poolIds.has(task.poolId));
+  state.tasks = state.tasks.filter((task) => !poolIds.has(task.poolId) && !goalIds.has(task.sourceGoalId));
   saveState();
 }
 
@@ -1440,7 +1452,7 @@ function deleteGoal(goalId) {
   if (!window.confirm(`「${goal.title}」と、その週間プール・関連する今日のToDoを削除します。この操作は取り消せません。`)) return;
   state.goals = state.goals.filter((item) => item.id !== goalId);
   state.pools = state.pools.filter((pool) => !poolIds.has(pool.id));
-  state.tasks = state.tasks.filter((task) => !poolIds.has(task.poolId));
+  state.tasks = state.tasks.filter((task) => task.sourceGoalId !== goalId && !poolIds.has(task.poolId));
   saveState();
 }
 
@@ -1473,7 +1485,8 @@ function deleteStudyRecord(taskId, date) {
     if (amountToRemove > 0) {
       task.actual = Math.max(0, Number(task.actual || 0) - amountToRemove);
       if (task.actual < task.minimum) task.completed = false;
-      if (task.poolId) affectedPoolIds.add(task.poolId);
+      const pool = getTaskPool(task);
+      if (pool) affectedPoolIds.add(pool.id);
     }
     if (state.studyTimer?.taskId === task.id && !state.studyTimer.startedAt) {
       state.studyTimer.elapsedSeconds = 0;
@@ -1952,15 +1965,17 @@ document.addEventListener("click", (event) => {
   const addQuizTaskButton = event.target.closest("[data-add-quiz-task]");
   if (addQuizTaskButton) {
     const quiz = state.quizzes.find((item) => item.id === addQuizTaskButton.dataset.addQuizTask);
-    if (!quiz || state.tasks.some((task) => task.quizId === quiz.id && task.date === today)) return;
+    if (!quiz || hasScheduleTaskToday(quiz)) return;
+    const pool = findSchedulePool(quiz);
     state.tasks.push({
       id: createId(),
       quizId: quiz.id,
+      ...(pool?.status === "active" ? { poolId: pool.id } : {}),
       title: quiz.title || (quiz.kind === "submission" ? "提出物" : "小テスト"),
       subject: quiz.subject,
-      scope: quiz.scope || "",
-      scopeUnit: quiz.unit || "",
-      unit: quiz.kind === "submission" ? (quiz.unit || "件") : "回",
+      scope: quiz.scope || pool?.scope || "",
+      scopeUnit: quiz.unit || pool?.scopeUnit || "",
+      unit: pool?.unit || (quiz.kind === "submission" ? (quiz.unit || "件") : "回"),
       memo: "",
       minimum: 1,
       actual: 0,
@@ -2449,7 +2464,14 @@ document.querySelector("#study-log-form").addEventListener("submit", (event) => 
 
 function addTaskActual(task, amount) {
   task.actual = (task.actual || 0) + amount;
-  if (task.poolId) syncTaskProgress(task.poolId);
+  const pool = getTaskPool(task);
+  if (pool) syncTaskProgress(pool.id);
+}
+
+function getTaskPool(task) {
+  if (task.poolId) return state.pools.find((item) => item.id === task.poolId);
+  return state.pools.find((pool) => (task.quizId && pool.sourceQuizId === task.quizId)
+    || (task.sourceGoalId && pool.sourceGoalId === task.sourceGoalId));
 }
 
 function syncTaskProgress(poolId) {
@@ -2462,7 +2484,10 @@ function syncTaskProgress(poolId) {
   let changed = false;
   relatedPools.forEach((item) => {
     const completed = state.tasks
-      .filter((task) => task.poolId === item.id)
+      .filter((task) => task.poolId === item.id || (!task.poolId && (
+        (item.sourceQuizId && task.quizId === item.sourceQuizId)
+        || (item.sourceGoalId && task.sourceGoalId === item.sourceGoalId)
+      )))
       .reduce((total, task) => total + Number(task.actual || 0), 0);
     if (item.completed !== completed) changed = true;
     item.completed = completed;
@@ -2790,12 +2815,14 @@ function returnTaskToPool(taskId) {
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task || hasTaskProgress(task)) return;
   const pool = task.poolId ? state.pools.find((item) => item.id === task.poolId) : null;
-  const schedule = !pool && task.quizId
-    ? state.quizzes.find((item) => item.id === task.quizId)
+  const schedule = !pool && (task.quizId || task.sourceGoalId)
+    ? getScheduledQuizzes().find((item) => task.sourceGoalId
+      ? item.sourceGoalId === task.sourceGoalId
+      : item.id === task.quizId)
     : null;
   if (task.poolId) {
     if (!pool || pool.status !== "active") return;
-  } else if (task.quizId) {
+  } else if (task.quizId || task.sourceGoalId) {
     if (!schedule) return;
     const schedulePool = findSchedulePool(schedule);
     if (schedulePool && schedulePool.status !== "active") return;
@@ -2823,8 +2850,10 @@ document.querySelector("#return-task-form").addEventListener("submit", (event) =
     showError(form, "戻し先の週間プールが見つかりません。");
     return;
   }
-  if (!pool && task.quizId) {
-    const schedule = state.quizzes.find((item) => item.id === task.quizId);
+  if (!pool && (task.quizId || task.sourceGoalId)) {
+    const schedule = getScheduledQuizzes().find((item) => task.sourceGoalId
+      ? item.sourceGoalId === task.sourceGoalId
+      : item.id === task.quizId);
     if (!schedule) {
       showError(form, "戻し先の予定が見つかりません。");
       return;

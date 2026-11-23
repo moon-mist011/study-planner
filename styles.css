@@ -396,13 +396,13 @@ button.calendar-cell:hover { background: #f7faf6; }
 }
 
 @media (min-width: 701px) {
-  body { padding-left: 112px; }
+  body { padding-left: 96px; }
   .page-shell { padding-bottom: 24px; }
   .auth-screen { min-height: calc(100vh - 66px); }
-  .bottom-nav { top: 0; right: auto; bottom: 0; left: 0; width: 112px; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 16px 8px; border-top: 0; border-right: 1px solid #e9ece7; transition: none; }
+  .bottom-nav { top: 0; right: auto; bottom: 0; left: 0; width: 96px; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 16px 8px; border-top: 0; border-right: 1px solid #e9ece7; transition: none; }
   .bottom-nav.is-hidden { transform: none; opacity: 1; pointer-events: auto; }
   .bottom-nav-item { width: 100%; flex-direction: column; justify-content: center; gap: 4px; padding: 4px; text-align: center; }
-  .recording-view { bottom: 0; left: 112px; }
+  .recording-view { bottom: 0; left: 96px; }
   .recording-session, .recording-task-select { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); }
 }
 
