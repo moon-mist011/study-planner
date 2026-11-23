@@ -921,9 +921,9 @@ function renderEvents() {
   elements.eventsEmpty.hidden = currentEvents.length > 0;
   elements.futureEventsEmpty.hidden = futureEvents.length > 0;
   elements.pastEventsEmpty.hidden = pastEvents.length > 0;
-  elements.events.innerHTML = currentEvents.map(renderEventCard).join("");
-  elements.futureEvents.innerHTML = futureEvents.map(renderEventCard).join("");
-  elements.pastEvents.innerHTML = pastEvents.map(renderEventCard).join("");
+  elements.events.innerHTML = currentEvents.map((event) => renderEventCard(event)).join("");
+  elements.futureEvents.innerHTML = futureEvents.map((event) => renderEventCard(event, true)).join("");
+  elements.pastEvents.innerHTML = pastEvents.map((event) => renderEventCard(event)).join("");
 }
 
 function scheduleEventRefresh() {
@@ -1020,7 +1020,7 @@ function moveDueSchedulesToPools() {
   return changed;
 }
 
-function renderEventCard(event) {
+function renderEventCard(event, isInFutureList = false) {
   const eventGoals = state.goals
     .filter((goal) => goal.eventId === event.id)
     .sort(compareGoalsByDeadlineAndSubject);
@@ -1031,7 +1031,9 @@ function renderEventCard(event) {
   const isPastEvent = event.end && event.end < today;
   const visibilityActions = isPastEvent ? "" : event.alwaysShow
     ? `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-top-pin="${escapeHtml(event.id)}" aria-pressed="${Boolean(event.pinnedAt)}" aria-label="${event.pinnedAt ? "上部固定を解除" : "上部に固定"}" title="${event.pinnedAt ? "上部固定を解除" : "上部に固定"}">${event.pinnedAt ? "上部固定中" : "上部に固定"}</button><button class="text-button event-unshow" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}">常に表示を解除</button>`
-    : `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}" aria-label="イベントと長期計画を常に表示" title="イベントと長期計画を常に表示">常に表示</button>`;
+    : isInFutureList
+      ? `<button class="button button-quiet button-small event-always-show" type="button" data-toggle-event-always-show="${escapeHtml(event.id)}" aria-label="イベントと長期計画を常に表示" title="イベントと長期計画を常に表示">常に表示</button>`
+      : "";
   return `<article class="event-card">
     <div class="event-heading">
       <div class="card-top"><div><button class="card-title detail-title" type="button" data-event-details="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)}の詳細を表示">${escapeHtml(event.title)}</button><p class="card-subtitle">${eventDates}</p></div>
