@@ -895,10 +895,10 @@ function renderTaskCard(task) {
   const shortfall = !task.completed && !achieved
     ? `<span class="shortfall">あと ${task.minimum - recorded} ${escapeHtml(unit)}</span>`
     : "";
-  const taskState = task.status === "closed"
-    ? "終了"
-    : task.completed
-      ? "完了"
+  const taskState = task.completed
+    ? "完了"
+    : task.status === "closed"
+      ? "終了"
       : achieved
         ? "最低達成・継続中"
         : recorded > 0
@@ -906,13 +906,15 @@ function renderTaskCard(task) {
           : "未着手";
   const isPast = task.date < today;
   const date = isPast ? `${formatDate(task.date, { month: "numeric", day: "numeric", weekday: "short" })} ・ ` : "";
-  const carryButtons = isPast && !task.completed && task.status !== "closed"
+  const carryButtons = isPast && !task.completed
     ? isExpiredPoolTask(task)
       ? `<button class="text-button" type="button" data-carry-weekly-task="${escapeHtml(task.id)}">残りを繰り越す</button><button class="text-button" type="button" data-decline-weekly-task="${escapeHtml(task.id)}">繰り越さない</button>`
-      : `<button class="text-button" type="button" data-carry-overdue-task="${escapeHtml(task.id)}">今日に繰り越す</button>`
+      : task.status !== "closed"
+        ? `<button class="text-button" type="button" data-carry-overdue-task="${escapeHtml(task.id)}">今日に繰り越す</button>`
+        : ""
     : "";
   const taskActions = task.status === "closed"
-    ? ""
+    ? carryButtons
     : `<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButtons}${task.completed ? "" : `${achieved ? `<button class="task-complete" type="button" data-mark-task-complete="${escapeHtml(task.id)}">✅ 完了</button>` : ""}<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}`;
   return `<article class="task-card${task.completed ? " done" : ""}${isPast && !task.completed && task.status !== "closed" ? " past-uncompleted" : ""}">
     <div class="task-card-summary">
@@ -2174,14 +2176,14 @@ document.addEventListener("click", (event) => {
   const carryWeeklyTaskButton = event.target.closest("[data-carry-weekly-task]");
   if (carryWeeklyTaskButton) {
     const task = state.tasks.find((item) => item.id === carryWeeklyTaskButton.dataset.carryWeeklyTask);
-    if (!task || task.completed || task.status === "closed" || task.date >= today || !isExpiredPoolTask(task)) return;
-    openCarryOverdueDialog([task.id]);
+    if (!task || task.completed || task.date >= today || !isExpiredPoolTask(task)) return;
+    openCarryOverdueDialog([task.id], { includeClosed: true });
     return;
   }
   const declineWeeklyTaskButton = event.target.closest("[data-decline-weekly-task]");
   if (declineWeeklyTaskButton) {
     const task = state.tasks.find((item) => item.id === declineWeeklyTaskButton.dataset.declineWeeklyTask);
-    if (!task || task.completed || task.status === "closed" || task.date >= today || !isExpiredPoolTask(task)) return;
+    if (!task || task.completed || task.date >= today || !isExpiredPoolTask(task)) return;
     task.status = "closed";
     saveState();
     return;
@@ -2685,10 +2687,10 @@ elements.completeDialog.addEventListener("close", () => {
   recordingEndTaskId = null;
 });
 
-function openCarryOverdueDialog(taskIds) {
+function openCarryOverdueDialog(taskIds, { includeClosed = false } = {}) {
   const overdueTasks = state.tasks.filter((task) =>
     !task.completed
-    && task.status !== "closed"
+    && (includeClosed || task.status !== "closed")
     && task.date < today
     && (!taskIds || taskIds.includes(task.id)));
   if (!overdueTasks.length) return;
@@ -2703,7 +2705,7 @@ function openCarryOverdueDialog(taskIds) {
     return `<div class="carry-overdue-row">
       <span><strong>${escapeHtml(title)}</strong><small>未達分 ${shortfall} ${escapeHtml(unit)}</small></span>
       <span class="carry-overdue-amount">
-        <input type="number" name="carry-${escapeHtml(task.id)}" data-carry-task="${escapeHtml(task.id)}" min="1" step="1" value="${defaultMinimum}" required />
+        <input type="number" name="carry-${escapeHtml(task.id)}" data-carry-task="${escapeHtml(task.id)}" data-carry-closed="${includeClosed && task.status === "closed"}" min="1" step="1" value="${defaultMinimum}" required />
         <span class="quick-amounts carry-overdue-quick">
           <button type="button" data-carry-add="1">＋1</button>
           <button type="button" data-carry-add="5">＋5</button>
@@ -2745,7 +2747,7 @@ function carryOverdueTasksToToday() {
 
   inputs.forEach((input) => {
     const task = state.tasks.find((item) => item.id === input.dataset.carryTask);
-    if (!task || task.completed || task.status === "closed" || task.date >= today) return;
+    if (!task || task.completed || (task.status === "closed" && input.dataset.carryClosed !== "true") || task.date >= today) return;
     if (state.studyTimer?.taskId === task.id) {
       addRunningTimeToTask(state.studyTimer, Date.now());
       state.studyTimer = null;
@@ -2754,6 +2756,7 @@ function carryOverdueTasksToToday() {
     archiveTaskRecord(task);
     const minimum = Number(input.value);
     const memo = form.querySelector(`[data-carry-memo="${CSS.escape(input.dataset.carryTask)}"]`)?.value.trim() || "";
+    delete task.status;
     const existingTodayTask = state.tasks.find((item) =>
       item.id !== task.id
       && item.date === today
@@ -2809,7 +2812,7 @@ document.querySelector("#carry-pool-form").addEventListener("submit", (event) =>
     showError(form, "繰り越せる残り量がありません。");
     return;
   }
-  const nextStart = pool.end < today ? today : shiftDate(pool.end, 1);
+  const nextStart = getWeekStart(today);
   pool.status = "closed";
   state.pools.push({
     ...pool,
