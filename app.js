@@ -134,6 +134,15 @@ function shiftDate(dateString, days) {
   return dateKey(date);
 }
 
+function getWeekday(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+function getWeekStart(dateString) {
+  return shiftDate(dateString, -getWeekday(dateString));
+}
+
 function addMonths(date, months) {
   const result = new Date(date.getFullYear(), date.getMonth() + months, 1);
   const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
@@ -850,12 +859,12 @@ function renderSummary() {
 
 function renderTasks() {
   const visibleTasks = state.tasks
-    .filter((task) => task.date === today || (!task.completed && task.date < today))
+    .filter((task) => task.date === today || (!task.completed && task.status !== "closed" && task.date < today))
     .sort((a, b) => Number(a.completed) - Number(b.completed)
       || b.date.localeCompare(a.date)
       || getTaskSubjectOrder(a) - getTaskSubjectOrder(b));
   const pastTasks = state.tasks
-    .filter((task) => task.completed && task.date !== today)
+    .filter((task) => (task.completed || task.status === "closed") && task.date !== today)
     .sort(compareTasksByDeadlineAndSubject);
   const overdueTasks = visibleTasks.filter((task) => task.date < today);
   elements.carryOverdueTasks.hidden = overdueTasks.length === 0;
@@ -873,7 +882,7 @@ function renderTaskCard(task) {
   const unit = pool?.unit || task.unit;
   const title = pool?.title || task.title;
   const subject = pool?.subject || task.subject || "科目未設定";
-  const canReturn = canReturnTaskToPool(task);
+  const canReturn = task.status !== "closed" && canReturnTaskToPool(task);
   const returnButton = canReturn
     ? `<button class="text-button icon-action" type="button" data-return-task="${escapeHtml(task.id)}" aria-label="週間プールへ戻す" title="${hasTaskProgress(task) ? "実績や勉強記録があるToDoは戻せません" : "週間プールへ戻す"}"${hasTaskProgress(task) ? " disabled" : ""}>↩️</button>`
     : "";
@@ -886,13 +895,26 @@ function renderTaskCard(task) {
   const shortfall = !task.completed && !achieved
     ? `<span class="shortfall">あと ${task.minimum - recorded} ${escapeHtml(unit)}</span>`
     : "";
-  const taskState = task.completed ? "完了" : achieved ? "最低達成・継続中" : recorded > 0 ? "記録あり" : "未着手";
+  const taskState = task.status === "closed"
+    ? "終了"
+    : task.completed
+      ? "完了"
+      : achieved
+        ? "最低達成・継続中"
+        : recorded > 0
+          ? "記録あり"
+          : "未着手";
   const isPast = task.date < today;
   const date = isPast ? `${formatDate(task.date, { month: "numeric", day: "numeric", weekday: "short" })} ・ ` : "";
-  const carryButton = isPast && !task.completed
-    ? `<button class="text-button" type="button" data-carry-overdue-task="${escapeHtml(task.id)}">今日に繰り越す</button>`
+  const carryButtons = isPast && !task.completed && task.status !== "closed"
+    ? isExpiredPoolTask(task)
+      ? `<button class="text-button" type="button" data-carry-weekly-task="${escapeHtml(task.id)}">残りを繰り越す</button><button class="text-button" type="button" data-decline-weekly-task="${escapeHtml(task.id)}">繰り越さない</button>`
+      : `<button class="text-button" type="button" data-carry-overdue-task="${escapeHtml(task.id)}">今日に繰り越す</button>`
     : "";
-  return `<article class="task-card${task.completed ? " done" : ""}${isPast && !task.completed ? " past-uncompleted" : ""}">
+  const taskActions = task.status === "closed"
+    ? ""
+    : `<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButtons}${task.completed ? "" : `${achieved ? `<button class="task-complete" type="button" data-mark-task-complete="${escapeHtml(task.id)}">✅ 完了</button>` : ""}<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}`;
+  return `<article class="task-card${task.completed ? " done" : ""}${isPast && !task.completed && task.status !== "closed" ? " past-uncompleted" : ""}">
     <div class="task-card-summary">
       <div class="task-main">
         <button class="card-title detail-title" type="button" data-task-details="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の詳細を表示">${escapeHtml(title)}</button>
@@ -901,7 +923,7 @@ function renderTaskCard(task) {
       ${(surplus || shortfall) ? `<div class="task-remainder">${surplus}${shortfall}</div>` : ""}
     </div>
     <div class="task-card-footer">
-      <div class="task-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-task="${escapeHtml(task.id)}" aria-label="タスクを編集" title="編集">✏️</button>${carryButton}${task.completed ? "" : `${achieved ? `<button class="task-complete" type="button" data-mark-task-complete="${escapeHtml(task.id)}">✅ 完了</button>` : ""}<button class="task-complete" type="button" data-complete-task="${escapeHtml(task.id)}">${completeLabel}</button>`}</div>
+      <div class="task-actions">${returnButton}${taskActions}</div>
     </div>
   </article>`;
 }
@@ -949,9 +971,8 @@ function scheduleEventRefresh() {
 }
 
 function getSchedulePoolStart(dueDate) {
-  const [year, month, day] = dueDate.split("-").map(Number);
-  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  return shiftDate(dueDate, weekday <= 2 ? -(weekday + 7) : -weekday);
+  const weekday = getWeekday(dueDate);
+  return shiftDate(getWeekStart(dueDate), weekday <= 2 ? -7 : 0);
 }
 
 function findSchedulePool(schedule) {
@@ -1398,6 +1419,7 @@ function hasTaskProgress(task) {
 }
 
 function canReturnTaskToPool(task) {
+  if (task.status === "closed") return false;
   if (task.poolId) {
     const pool = state.pools.find((item) => item.id === task.poolId);
     return pool?.status === "active";
@@ -1408,6 +1430,11 @@ function canReturnTaskToPool(task) {
   if (!quiz) return false;
   const pool = findSchedulePool(quiz);
   return !pool || pool.status === "active";
+}
+
+function isExpiredPoolTask(task) {
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  return Boolean(pool?.end && pool.end < today);
 }
 
 function getPoolReturnDestination(pool) {
@@ -1597,7 +1624,9 @@ function openDialog(dialog) {
   }
   if (dialog === elements.studyLogDialog) {
     const taskSelect = form.elements.taskId;
-    const studyTasks = [...state.tasks].sort((a, b) => compareTasksByDeadlineAndSubject(a, b) || a.title.localeCompare(b.title));
+    const studyTasks = state.tasks
+      .filter((task) => task.status !== "closed")
+      .sort((a, b) => compareTasksByDeadlineAndSubject(a, b) || a.title.localeCompare(b.title));
     taskSelect.innerHTML = `<option value="" selected disabled>${studyTasks.length ? "タスクを選択してください" : "記録できるタスクがありません"}</option>${studyTasks
       .map((task) => {
         const pool = state.pools.find((item) => item.id === task.poolId);
@@ -1616,8 +1645,9 @@ function openDialog(dialog) {
   if (dialog === elements.poolDialog) {
     form.elements.goalId.disabled = false;
     form.elements.goalId.required = true;
-    form.elements.start.value = today;
-    form.elements.end.value = shiftDate(today, 6);
+    const start = getWeekStart(today);
+    form.elements.start.value = start;
+    form.elements.end.value = shiftDate(start, 6);
   }
   if (dialog === elements.eventDialog) {
     form.elements.start.value = today;
@@ -2034,7 +2064,7 @@ document.addEventListener("click", (event) => {
   const editTaskButton = event.target.closest("[data-edit-task]");
   if (editTaskButton) {
     const item = state.tasks.find((task) => task.id === editTaskButton.dataset.editTask);
-    if (!item) return;
+    if (!item || item.status === "closed") return;
     const form = openEditDialog(elements.taskDialog, item, "今日の最低ラインを編集", "変更を保存");
     form.elements.poolId.value = item.poolId || "";
     form.elements.minimum.value = item.minimum;
@@ -2141,10 +2171,25 @@ document.addEventListener("click", (event) => {
     openCarryOverdueDialog([carryOverdueTaskButton.dataset.carryOverdueTask]);
     return;
   }
+  const carryWeeklyTaskButton = event.target.closest("[data-carry-weekly-task]");
+  if (carryWeeklyTaskButton) {
+    const task = state.tasks.find((item) => item.id === carryWeeklyTaskButton.dataset.carryWeeklyTask);
+    if (!task || task.completed || task.status === "closed" || task.date >= today || !isExpiredPoolTask(task)) return;
+    openCarryOverdueDialog([task.id]);
+    return;
+  }
+  const declineWeeklyTaskButton = event.target.closest("[data-decline-weekly-task]");
+  if (declineWeeklyTaskButton) {
+    const task = state.tasks.find((item) => item.id === declineWeeklyTaskButton.dataset.declineWeeklyTask);
+    if (!task || task.completed || task.status === "closed" || task.date >= today || !isExpiredPoolTask(task)) return;
+    task.status = "closed";
+    saveState();
+    return;
+  }
   const completeButton = event.target.closest("[data-complete-task]");
   if (completeButton) {
     const task = state.tasks.find((item) => item.id === completeButton.dataset.completeTask);
-    if (!task || task.completed) return;
+    if (!task || task.completed || task.status === "closed") return;
     const pool = state.pools.find((item) => item.id === task.poolId);
     const form = document.querySelector("#complete-form");
     openDialog(elements.completeDialog);
@@ -2161,7 +2206,7 @@ document.addEventListener("click", (event) => {
   if (markTaskCompleteButton) {
     const task = state.tasks.find((item) => item.id === markTaskCompleteButton.dataset.markTaskComplete);
     const minimum = Number(task?.minimum);
-    if (!task || task.completed || !Number.isSafeInteger(minimum) || minimum < 1
+    if (!task || task.completed || task.status === "closed" || !Number.isSafeInteger(minimum) || minimum < 1
       || Number(task.actual || 0) < minimum) return;
     task.completed = true;
     saveState();
@@ -2608,7 +2653,7 @@ function syncTaskProgress(poolId) {
 
 function commitTaskRecord(taskId, amount, complete) {
   const task = state.tasks.find((item) => item.id === taskId);
-  if (!task || task.completed) return;
+  if (!task || task.completed || task.status === "closed") return;
   addTaskActual(task, amount);
   task.completed = complete;
 }
@@ -2626,7 +2671,7 @@ function completeAchievedPastTasks() {
   let changed = false;
   state.tasks.forEach((task) => {
     const minimum = Number(task.minimum);
-    if (!task.completed && task.date < today && Number.isSafeInteger(minimum) && minimum > 0
+    if (!task.completed && task.status !== "closed" && task.date < today && Number.isSafeInteger(minimum) && minimum > 0
       && Number(task.actual || 0) >= minimum) {
       task.completed = true;
       changed = true;
@@ -2643,6 +2688,7 @@ elements.completeDialog.addEventListener("close", () => {
 function openCarryOverdueDialog(taskIds) {
   const overdueTasks = state.tasks.filter((task) =>
     !task.completed
+    && task.status !== "closed"
     && task.date < today
     && (!taskIds || taskIds.includes(task.id)));
   if (!overdueTasks.length) return;
@@ -2699,7 +2745,7 @@ function carryOverdueTasksToToday() {
 
   inputs.forEach((input) => {
     const task = state.tasks.find((item) => item.id === input.dataset.carryTask);
-    if (!task || task.completed || task.date >= today) return;
+    if (!task || task.completed || task.status === "closed" || task.date >= today) return;
     if (state.studyTimer?.taskId === task.id) {
       addRunningTimeToTask(state.studyTimer, Date.now());
       state.studyTimer = null;
@@ -2712,6 +2758,7 @@ function carryOverdueTasksToToday() {
       item.id !== task.id
       && item.date === today
       && !item.completed
+      && item.status !== "closed"
       && (task.poolId ? item.poolId === task.poolId : task.quizId && item.quizId === task.quizId));
 
     if (existingTodayTask) {
@@ -2807,11 +2854,13 @@ function openTaskDetails(task) {
   const unit = pool?.unit || task.unit || "";
   const status = task.completed
     ? "完了"
-    : recorded >= task.minimum
-      ? "最低量達成・継続中"
-      : recorded > 0
-        ? "記録あり"
-        : "未着手";
+    : task.status === "closed"
+      ? "終了"
+      : recorded >= task.minimum
+        ? "最低量達成・継続中"
+        : recorded > 0
+          ? "記録あり"
+          : "未着手";
   const studyLogs = (task.studyLogs || []).map((log) =>
     `${formatDetailDate(log.date)}：勉強 ${formatDetailDuration(log.seconds)}、実施量 ${log.amount} ${unit}`.trim());
   const details = [
