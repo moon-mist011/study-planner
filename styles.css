@@ -56,6 +56,16 @@ h1 span { color: var(--green); }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .section-heading .eyebrow { margin-bottom: 4px; }
 .today-heading-meta { display: flex; align-items: center; gap: 12px; }
+.subject-filter { margin: -8px 0 14px; }
+.subject-filter details { width: fit-content; max-width: 100%; }
+.subject-filter summary { width: fit-content; min-height: 32px; padding: 7px 10px; border: 1px solid #dfe7df; border-radius: 8px; color: var(--green); background: #f7faf7; font-size: 10px; font-weight: 700; cursor: pointer; list-style: none; }
+.subject-filter summary::-webkit-details-marker { display: none; }
+.subject-filter summary::before { content: "フィルター "; color: #738078; font-weight: 500; }
+.subject-filter[open] summary { border-radius: 8px 8px 0 0; }
+.subject-filter-options { display: flex; flex-wrap: wrap; gap: 6px; max-width: 460px; padding: 9px; border: 1px solid #dfe7df; border-top: 0; border-radius: 0 8px 8px 8px; background: white; }
+.subject-filter-options label { display: inline-flex; min-height: 30px; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid #e7ece7; border-radius: 7px; color: #65736b; background: #fbfcfa; font-size: 10px; cursor: pointer; }
+.subject-filter-options input { width: 14px; height: 14px; accent-color: var(--green); }
+.calendar-subject-filter { margin: 12px 0 16px; }
 h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .section-date { color: #89958e; font-size: 11px; }
 .past-tasks-section { margin: 20px 0 20px; }

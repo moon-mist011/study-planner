@@ -52,6 +52,7 @@
             <div class="welcome-stats" id="today-summary" aria-live="polite"></div>
           </div>
         </div>
+        <div class="subject-filter" data-subject-filter="today"></div>
         <div id="today-list"></div>
         <div class="empty-state" id="today-empty">
           <span class="empty-icon" aria-hidden="true">✳</span>
@@ -79,6 +80,7 @@
               <span aria-hidden="true">＋</span> イベントを追加
             </button>
           </div>
+          <div class="subject-filter" data-subject-filter="events"></div>
           <div class="card-list" id="event-list"></div>
           <p class="muted-empty" id="event-empty">2ヶ月以内に開始するイベントはありません。</p>
           <div class="future-events">
@@ -101,6 +103,7 @@
               <span aria-hidden="true">＋</span> 予定を追加
             </button>
           </div>
+          <div class="subject-filter" data-subject-filter="quizzes"></div>
           <div class="card-list" id="quiz-list"></div>
           <p class="muted-empty" id="quiz-empty">タイトル・科目・日付・校時を登録すると、ここに予定が表示されます。</p>
           <section class="mini-calendar" aria-label="ミニカレンダー">
@@ -137,6 +140,7 @@
               <span aria-hidden="true">＋</span> プールを作成
             </button>
           </div>
+          <div class="subject-filter" data-subject-filter="pools"></div>
           <div class="card-list" id="pool-list"></div>
           <p class="muted-empty" id="pool-empty">今週の週間プールはありません。長期計画から追加できます。</p>
           <section class="past-pools" id="past-pools" aria-labelledby="past-pools-heading" hidden>
@@ -153,6 +157,7 @@
             <h2 id="past-tasks-heading">過去</h2>
           </div>
         </div>
+        <div class="subject-filter" data-subject-filter="past"></div>
         <h3 class="past-list-heading first">タスク</h3>
         <div class="card-list" id="past-task-list"></div>
         <p class="muted-empty" id="past-task-empty">過去のタスクはありません。</p>
@@ -228,6 +233,7 @@
           </div>
           <button class="button button-secondary button-small" type="button" data-calendar-home>ホームへ戻る</button>
         </div>
+        <div class="subject-filter calendar-subject-filter" data-subject-filter="calendar"></div>
         <div class="calendar-layout">
           <section class="calendar-month-view" aria-label="月間予定">
             <div class="calendar-toolbar">

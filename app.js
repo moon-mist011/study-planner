@@ -93,6 +93,14 @@ let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
 let selectedCalendarDate = today;
 let miniCalendarSelectedDate = "";
 let calendarRenderedMinute = -1;
+const subjectFilters = new Map([
+  ["today", new Set()],
+  ["events", new Set()],
+  ["quizzes", new Set()],
+  ["pools", new Set()],
+  ["past", new Set()],
+  ["calendar", new Set()],
+]);
 let state = emptyState();
 let pendingTaskRecord = null;
 let selectingRecordingTask = false;
@@ -625,8 +633,58 @@ function taskMeetsMinimum(task, amount) {
   return (task.actual || 0) + amount >= task.minimum;
 }
 
+function getAllSubjects() {
+  const subjects = new Set(state.settings.subjects);
+  [...state.goals, ...state.quizzes, ...state.pools, ...state.tasks]
+    .forEach((item) => {
+      if (item.subject) subjects.add(item.subject);
+    });
+  return [...subjects];
+}
+
+function matchesSubjectFilter(section, subject) {
+  const selected = subjectFilters.get(section);
+  return !selected?.size || (subject ? selected.has(subject) : false);
+}
+
+function getTaskSubject(task) {
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  return pool?.subject || task.subject || "";
+}
+
+function getEventSubjects(event) {
+  const subjects = new Set();
+  state.goals
+    .filter((goal) => goal.eventId === event.id)
+    .forEach((goal) => { if (goal.subject) subjects.add(goal.subject); });
+  state.pools
+    .filter((pool) => pool.eventId === event.id
+      || state.goals.some((goal) => goal.eventId === event.id && goal.id === pool.goalId))
+    .forEach((pool) => { if (pool.subject) subjects.add(pool.subject); });
+  state.quizzes
+    .filter((quiz) => quiz.eventId === event.id)
+    .forEach((quiz) => { if (quiz.subject) subjects.add(quiz.subject); });
+  return subjects;
+}
+
+function renderSubjectFilters() {
+  const subjects = getAllSubjects();
+  document.querySelectorAll("[data-subject-filter]").forEach((container) => {
+    const section = container.dataset.subjectFilter;
+    const selected = subjectFilters.get(section) || new Set();
+    const count = selected.size;
+    container.innerHTML = `<details><summary>${count ? `${count}科目選択中` : "すべての科目"}</summary>
+      <div class="subject-filter-options">
+        <label><input type="checkbox" data-subject-filter-all="${escapeHtml(section)}" ${count ? "" : "checked"} />すべて</label>
+        ${subjects.map((subject) => `<label><input type="checkbox" data-subject-filter-section="${escapeHtml(section)}" value="${escapeHtml(subject)}" ${selected.has(subject) ? "checked" : ""} />${escapeHtml(subject)}</label>`).join("")}
+      </div>
+    </details>`;
+  });
+}
+
 function render() {
   reconcileInPeriodStatuses(state.pools, state.tasks);
+  renderSubjectFilters();
   elements.dateLabel.textContent = formatDate(today, { month: "long", day: "numeric", weekday: "short" });
   renderSubjectOptions();
   renderEventOptions();
@@ -682,6 +740,12 @@ function getTaskStudySecondsOnDate(task, date) {
 
 function getStudySecondsForDate(date) {
   return state.tasks
+    .reduce((total, task) => total + getTaskStudySecondsOnDate(task, date), 0);
+}
+
+function getFilteredStudySecondsForDate(date, subjectSection = "calendar") {
+  return state.tasks
+    .filter((task) => matchesSubjectFilter(subjectSection, getTaskSubject(task)))
     .reduce((total, task) => total + getTaskStudySecondsOnDate(task, date), 0);
 }
 
@@ -885,7 +949,9 @@ function compareGoalsByDeadlineAndSubject(a, b) {
 }
 
 function renderSummary() {
-  const todaysTasks = state.tasks.filter((task) => task.date === today);
+  const todaysTasks = state.tasks
+    .filter((task) => task.date === today)
+    .filter((task) => matchesSubjectFilter("today", getTaskSubject(task)));
   const completed = todaysTasks.filter((task) => task.completed).length;
   elements.summary.innerHTML = `<span class="stat-number">${completed}<span style="font-size:13px;color:#93a099"> / ${todaysTasks.length}</span></span><span class="stat-caption">今日の完了</span>`;
 }
@@ -893,11 +959,13 @@ function renderSummary() {
 function renderTasks() {
   const visibleTasks = state.tasks
     .filter((task) => task.date === today || (!task.completed && task.status !== "closed" && task.date < today))
+    .filter((task) => matchesSubjectFilter("today", getTaskSubject(task)))
     .sort((a, b) => Number(a.completed) - Number(b.completed)
       || b.date.localeCompare(a.date)
       || getTaskSubjectOrder(a) - getTaskSubjectOrder(b));
   const pastTasks = state.tasks
     .filter((task) => (task.completed || task.status === "closed") && task.date !== today)
+    .filter((task) => matchesSubjectFilter("past", getTaskSubject(task)))
     .sort(compareTasksByDeadlineAndSubject);
   const overdueTasks = visibleTasks.filter((task) => task.date < today);
   elements.carryOverdueTasks.hidden = overdueTasks.length === 0;
@@ -967,22 +1035,37 @@ function renderEvents() {
   const futureThreshold = dateKey(addMonths(new Date(), 2));
   const pastEvents = state.events
     .filter((event) => event.end && event.end < today)
+    .filter((event) => {
+      const subjects = getEventSubjects(event);
+      return !subjectFilters.get("past")?.size
+        || [...subjects].some((subject) => matchesSubjectFilter("past", subject));
+    })
     .sort((a, b) => b.end.localeCompare(a.end));
   const upcomingEvents = state.events.filter((event) => !event.end || event.end >= today);
   const compareUpcomingEvents = (a, b) => (a.start || "9999-12-31").localeCompare(b.start || "9999-12-31")
     || (a.end || "9999-12-31").localeCompare(b.end || "9999-12-31");
   const currentEvents = upcomingEvents
     .filter((event) => event.pinnedAt || event.alwaysShow || !event.start || event.start < futureThreshold)
+    .filter((event) => {
+      const subjects = getEventSubjects(event);
+      return !subjectFilters.get("events")?.size
+        || [...subjects].some((subject) => matchesSubjectFilter("events", subject));
+    })
     .sort((a, b) => (b.pinnedAt || 0) - (a.pinnedAt || 0) || compareUpcomingEvents(a, b));
   const futureEvents = upcomingEvents
     .filter((event) => !event.pinnedAt && !event.alwaysShow && event.start && event.start >= futureThreshold)
+    .filter((event) => {
+      const subjects = getEventSubjects(event);
+      return !subjectFilters.get("events")?.size
+        || [...subjects].some((subject) => matchesSubjectFilter("events", subject));
+    })
     .sort(compareUpcomingEvents);
   elements.eventsEmpty.hidden = currentEvents.length > 0;
   elements.futureEventsEmpty.hidden = futureEvents.length > 0;
   elements.pastEventsEmpty.hidden = pastEvents.length > 0;
   elements.events.innerHTML = currentEvents.map((event) => renderEventCard(event)).join("");
   elements.futureEvents.innerHTML = futureEvents.map((event) => renderEventCard(event, true)).join("");
-  elements.pastEvents.innerHTML = pastEvents.map((event) => renderEventCard(event)).join("");
+  elements.pastEvents.innerHTML = pastEvents.map((event) => renderEventCard(event, false, "past")).join("");
 }
 
 function scheduleEventRefresh() {
@@ -1080,9 +1163,10 @@ function moveDueSchedulesToPools() {
   return changed;
 }
 
-function renderEventCard(event, isInFutureList = false) {
+function renderEventCard(event, isInFutureList = false, subjectSection = "events") {
   const eventGoals = state.goals
     .filter((goal) => goal.eventId === event.id)
+    .filter((goal) => matchesSubjectFilter(subjectSection, goal.subject))
     .sort(compareGoalsByDeadlineAndSubject);
   const typeLabel = getEventTypeLabel(event.type);
   const eventDates = event.start && event.end
@@ -1160,7 +1244,8 @@ function getScheduledQuizzes() {
 }
 
 function renderQuizzes() {
-  const quizzes = getScheduledQuizzes();
+  const quizzes = getScheduledQuizzes()
+    .filter((quiz) => matchesSubjectFilter("quizzes", quiz.subject));
   elements.quizzesEmpty.hidden = quizzes.length > 0;
   elements.quizzes.innerHTML = quizzes.map((quiz) => {
     const event = state.events.find((item) => item.id === quiz.eventId);
@@ -1187,12 +1272,18 @@ function renderQuizzes() {
   }).join("");
 }
 
-function getSchedulesForDate(date) {
+function getSchedulesForDate(date, subjectSection = "calendar") {
   const events = state.events
     .filter((event) => event.start && event.end && event.start <= date && event.end >= date)
+    .filter((event) => {
+      const subjects = getEventSubjects(event);
+      return !subjectFilters.get(subjectSection)?.size
+        || [...subjects].some((subject) => matchesSubjectFilter(subjectSection, subject));
+    })
     .map((event) => ({ kind: "event", event }));
   const quizzes = getScheduledQuizzes()
     .filter((quiz) => quiz.date === date)
+    .filter((quiz) => matchesSubjectFilter(subjectSection, quiz.subject))
     .map((quiz) => ({ kind: "quiz", quiz }));
   return [...events, ...quizzes];
 }
@@ -1227,6 +1318,11 @@ function renderMiniCalendar() {
 
     const overlappingEvents = state.events
       .filter((item) => item.start && item.end && item.start <= weekEnd && item.end >= weekStart && item.start <= monthEnd && item.end >= monthStart)
+      .filter((item) => {
+        const subjects = getEventSubjects(item);
+        return !subjectFilters.get("quizzes")?.size
+          || [...subjects].some((subject) => matchesSubjectFilter("quizzes", subject));
+      })
       .map((item) => ({
         event: item,
         start: item.start > weekStart ? item.start : weekStart,
@@ -1249,6 +1345,7 @@ function renderMiniCalendar() {
     });
     const submissionDates = new Set(getScheduledQuizzes()
       .filter((quiz) => quiz.kind === "submission" && quiz.date >= weekStart && quiz.date <= weekEnd && quiz.date >= monthStart && quiz.date <= monthEnd)
+      .filter((quiz) => matchesSubjectFilter("quizzes", quiz.subject))
       .map((quiz) => quiz.date));
     const submissionBands = [...submissionDates].map((date) => {
       const column = new Date(`${date}T00:00:00`).getDay() + 1;
@@ -1263,7 +1360,7 @@ function renderMiniCalendar() {
   elements.miniCalendarPopover.hidden = !miniCalendarSelectedDate;
   if (miniCalendarSelectedDate) {
     elements.miniCalendarAgendaTitle.textContent = formatDate(miniCalendarSelectedDate, { year: "numeric", month: "long", day: "numeric", weekday: "long" });
-    const schedules = getSchedulesForDate(miniCalendarSelectedDate);
+    const schedules = getSchedulesForDate(miniCalendarSelectedDate, "quizzes");
     elements.miniCalendarAgenda.innerHTML = renderCalendarAgendaItems(schedules);
     elements.miniCalendarAgendaEmpty.hidden = schedules.length > 0;
   }
@@ -1290,7 +1387,7 @@ function renderCalendar() {
         cells.push('<span class="calendar-cell calendar-cell-empty" role="presentation"></span>');
         continue;
       }
-      const schedules = getSchedulesForDate(date);
+      const schedules = getSchedulesForDate(date, "calendar");
       const quizzes = schedules.filter((schedule) => schedule.kind === "quiz").map((schedule) => schedule.quiz);
       const isToday = date === today;
       const selected = date === selectedCalendarDate;
@@ -1309,6 +1406,11 @@ function renderCalendar() {
 
     const overlappingEvents = state.events
       .filter((item) => item.start && item.end && item.start <= weekEnd && item.end >= weekStart && item.start <= monthEnd && item.end >= monthStart)
+      .filter((item) => {
+        const subjects = getEventSubjects(item);
+        return !subjectFilters.get("calendar")?.size
+          || [...subjects].some((subject) => matchesSubjectFilter("calendar", subject));
+      })
       .map((item) => {
         const start = item.start > weekStart ? item.start : weekStart;
         const end = item.end < weekEnd ? item.end : weekEnd;
@@ -1355,6 +1457,7 @@ function renderStudyArchive() {
   };
 
   state.tasks.forEach((task) => {
+    if (!matchesSubjectFilter("calendar", getTaskSubject(task))) return;
     addStudyTime(task.date, task.studySeconds);
     (task.studyLogs || []).forEach((log) => addStudyTime(log.date, log.seconds));
     if (state.studyTimer?.taskId === task.id && state.studyTimer.startedAt) {
@@ -1382,12 +1485,13 @@ function renderStudyArchive() {
 
 function renderCalendarAgenda() {
   const date = selectedCalendarDate;
-  const schedules = getSchedulesForDate(date);
+  const schedules = getSchedulesForDate(date, "calendar");
   elements.calendarAgendaTitle.textContent = formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" });
   elements.calendarAgendaEmpty.hidden = schedules.length > 0;
   elements.calendarAgenda.innerHTML = renderCalendarAgendaItems(schedules, true);
   const groupedStudyTasks = new Map();
   state.tasks.forEach((task) => {
+    if (!matchesSubjectFilter("calendar", getTaskSubject(task))) return;
     const { seconds, amount } = getTaskStudyRecordOnDate(task, date);
     if (seconds === 0 && amount === 0) return;
     const key = getStudyTaskGroupKey(task);
@@ -1399,7 +1503,7 @@ function renderCalendarAgenda() {
   });
   const studyTasks = [...groupedStudyTasks.values()]
     .sort((a, b) => b.seconds - a.seconds || a.task.title.localeCompare(b.task.title));
-  const totalSeconds = getStudySecondsForDate(date);
+  const totalSeconds = studyTasks.reduce((total, group) => total + group.seconds, 0);
   elements.calendarStudyTotal.textContent = `合計 ${formatDuration(totalSeconds)}`;
   elements.calendarStudyEmpty.hidden = studyTasks.length > 0;
   elements.calendarStudyList.innerHTML = studyTasks.map(({ task, tasks, seconds, amount }) => {
@@ -1483,10 +1587,13 @@ function getPoolReturnDestination(pool) {
 function renderPools() {
   const pastPoolThreshold = shiftDate(today, -7);
   const currentPools = state.pools.filter((pool) => !pool.end || pool.end >= today)
+    .filter((pool) => matchesSubjectFilter("pools", pool.subject))
     .sort((a, b) => a.start.localeCompare(b.start));
   const recentlyExpiredPools = state.pools.filter((pool) => pool.end && pool.end < today && pool.end >= pastPoolThreshold)
+    .filter((pool) => matchesSubjectFilter("pools", pool.subject))
     .sort((a, b) => a.start.localeCompare(b.start));
   const pastPools = state.pools.filter((pool) => pool.end && pool.end < pastPoolThreshold)
+    .filter((pool) => matchesSubjectFilter("pools", pool.subject))
     .sort((a, b) => a.start.localeCompare(b.start));
   const pools = [...currentPools, ...recentlyExpiredPools];
   elements.poolsEmpty.hidden = pools.length > 0;
@@ -1632,6 +1739,25 @@ function deleteQuiz(quizId) {
   state.tasks = state.tasks.filter((task) => task.quizId !== quizId && !poolIds.has(task.poolId));
   saveState();
 }
+
+document.addEventListener("change", (event) => {
+  const allFilter = event.target.closest("[data-subject-filter-all]");
+  if (allFilter) {
+    if (allFilter.checked) {
+      subjectFilters.get(allFilter.dataset.subjectFilterAll)?.clear();
+      render();
+    }
+    return;
+  }
+  const subjectFilter = event.target.closest("[data-subject-filter-section]");
+  if (subjectFilter) {
+    const section = subjectFilters.get(subjectFilter.dataset.subjectFilterSection);
+    if (!section) return;
+    if (subjectFilter.checked) section.add(subjectFilter.value);
+    else section.delete(subjectFilter.value);
+    render();
+  }
+});
 
 function openDialog(dialog) {
   const form = dialog.querySelector("form");
