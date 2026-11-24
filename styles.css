@@ -61,6 +61,7 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.35px; }
 .past-tasks-section { margin: 20px 0 20px; }
 .past-list-heading { margin: 20px 0 10px; font-size: 13px; }
 .past-list-heading.first { margin-top: 0; }
+.past-pools { margin-top: 20px; padding-top: 17px; border-top: 1px solid var(--line); }
 .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 .button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 9px; font-weight: 600; font-size: 12px; transition: background .15s, transform .15s; }
 .button:active { transform: translateY(1px); }

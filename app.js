@@ -41,6 +41,8 @@ const elements = {
   quizDialog: document.querySelector("#quiz-dialog"),
   pools: document.querySelector("#pool-list"),
   poolsEmpty: document.querySelector("#pool-empty"),
+  pastPoolsSection: document.querySelector("#past-pools"),
+  pastPools: document.querySelector("#past-pool-list"),
   goalDialog: document.querySelector("#goal-dialog"),
   poolDialog: document.querySelector("#pool-dialog"),
   taskDialog: document.querySelector("#task-dialog"),
@@ -953,9 +955,10 @@ function getSchedulePoolStart(dueDate) {
 }
 
 function findSchedulePool(schedule) {
-  return state.pools.find((pool) => schedule.sourceGoalId
+  const pools = state.pools.filter((pool) => schedule.sourceGoalId
     ? pool.sourceGoalId === schedule.sourceGoalId
     : pool.sourceQuizId === schedule.id);
+  return pools.find((pool) => pool.status === "active") || pools[0];
 }
 
 function isScheduleComplete(schedule) {
@@ -1415,27 +1418,39 @@ function getPoolReturnDestination(pool) {
 }
 
 function renderPools() {
-  elements.poolsEmpty.hidden = state.pools.length > 0;
-  const pools = [...state.pools].sort((a, b) => a.start.localeCompare(b.start));
-  elements.pools.innerHTML = pools.map((pool) => {
-    const remaining = Math.max(0, pool.target - pool.completed);
-    const percent = pool.target ? Math.min(100, Math.round(pool.completed / pool.target * 100)) : 0;
-    const active = pool.status === "active";
-    const returnDestination = getPoolReturnDestination(pool);
-    const poolTasks = state.tasks.filter((task) => task.poolId === pool.id);
-    const hasProgress = Number(pool.completed || 0) > 0 || poolTasks.some(hasTaskProgress);
-    const returnButton = active && returnDestination
-      ? `<button class="text-button icon-action" type="button" data-return-pool="${escapeHtml(pool.id)}" aria-label="${returnDestination}へ戻す" title="${hasProgress ? "実績や勉強記録がある週間プールは戻せません" : `${returnDestination}へ戻す`}"${hasProgress ? " disabled" : ""}>↩️</button>`
-      : "";
-    const hasTodayTask = state.tasks.some((task) => task.date === today
-      && (task.poolId === pool.id || (pool.sourceQuizId && task.quizId === pool.sourceQuizId)));
-    const buttons = active
-      ? `${hasTodayTask ? "" : `<button class="text-button" type="button" data-add-task="${escapeHtml(pool.id)}">＋ 今日のToDoへ</button>`}
-         <button class="text-button" type="button" data-carry-pool="${escapeHtml(pool.id)}"${remaining === 0 ? " disabled" : ""}>残りを繰り越す</button>`
-      : `<span class="badge">終了</span>`;
-    const poolDescription = `${escapeHtml(pool.goalTitle || "長期計画")}から`;
-    const deadline = pool.deadline ? ` ・ 提出 ${formatDate(pool.deadline)}` : "";
-    return `<article class="pool-card">
+  const pastPoolThreshold = shiftDate(today, -7);
+  const currentPools = state.pools.filter((pool) => !pool.end || pool.end >= today)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const recentlyExpiredPools = state.pools.filter((pool) => pool.end && pool.end < today && pool.end >= pastPoolThreshold)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const pastPools = state.pools.filter((pool) => pool.end && pool.end < pastPoolThreshold)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const pools = [...currentPools, ...recentlyExpiredPools];
+  elements.poolsEmpty.hidden = pools.length > 0;
+  elements.pools.innerHTML = pools.map((pool) => renderPoolCard(pool)).join("");
+  elements.pastPoolsSection.hidden = pastPools.length === 0;
+  elements.pastPools.innerHTML = pastPools.map((pool) => renderPoolCard(pool)).join("");
+}
+
+function renderPoolCard(pool) {
+  const remaining = Math.max(0, pool.target - pool.completed);
+  const percent = pool.target ? Math.min(100, Math.round(pool.completed / pool.target * 100)) : 0;
+  const active = pool.status === "active";
+  const returnDestination = getPoolReturnDestination(pool);
+  const poolTasks = state.tasks.filter((task) => task.poolId === pool.id);
+  const hasProgress = Number(pool.completed || 0) > 0 || poolTasks.some(hasTaskProgress);
+  const returnButton = active && returnDestination
+    ? `<button class="text-button icon-action" type="button" data-return-pool="${escapeHtml(pool.id)}" aria-label="${returnDestination}へ戻す" title="${hasProgress ? "実績や勉強記録がある週間プールは戻せません" : `${returnDestination}へ戻す`}"${hasProgress ? " disabled" : ""}>↩️</button>`
+    : "";
+  const hasTodayTask = state.tasks.some((task) => task.date === today
+    && (task.poolId === pool.id || (pool.sourceQuizId && task.quizId === pool.sourceQuizId)));
+  const buttons = active
+    ? `${hasTodayTask ? "" : `<button class="text-button" type="button" data-add-task="${escapeHtml(pool.id)}">＋ 今日のToDoへ</button>`}
+       <button class="text-button" type="button" data-carry-pool="${escapeHtml(pool.id)}"${remaining === 0 ? " disabled" : ""}>残りを繰り越す</button>`
+    : `<span class="badge">終了</span>`;
+  const poolDescription = `${escapeHtml(pool.goalTitle || "長期計画")}から`;
+  const deadline = pool.deadline ? ` ・ 提出 ${formatDate(pool.deadline)}` : "";
+  return `<article class="pool-card">
       <div class="card-top"><div><button class="card-title detail-title" type="button" data-pool-details="${escapeHtml(pool.id)}" aria-label="${escapeHtml(pool.title)}の詳細を表示">${escapeHtml(pool.title)}</button><p class="card-subtitle">${escapeHtml(pool.subject || "科目未設定")} ・ ${poolDescription}${deadline}</p></div>
         <span class="badge${remaining === 0 ? " complete" : ""}">${remaining === 0 ? "達成" : `残り ${remaining} ${escapeHtml(pool.unit)}`}</span>
       </div>
@@ -1443,7 +1458,6 @@ function renderPools() {
       <div class="progress-meta"><span>${pool.completed} / ${pool.target} ${escapeHtml(pool.unit)} 完了</span><span>${percent}%</span></div>
       <div class="card-footer"><span class="date-range">${formatDate(pool.start)} — ${formatDate(pool.end)}</span><div class="pool-actions">${returnButton}<button class="text-button icon-action" type="button" data-edit-pool="${escapeHtml(pool.id)}" aria-label="週間プールを編集" title="編集">✏️</button>${buttons}</div></div>
     </article>`;
-  }).join("");
 }
 
 function renderPoolOptions() {
@@ -2748,7 +2762,7 @@ document.querySelector("#carry-pool-form").addEventListener("submit", (event) =>
     showError(form, "繰り越せる残り量がありません。");
     return;
   }
-  const nextStart = shiftDate(pool.end, 1);
+  const nextStart = pool.end < today ? today : shiftDate(pool.end, 1);
   pool.status = "closed";
   state.pools.push({
     ...pool,
