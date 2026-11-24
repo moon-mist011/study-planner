@@ -162,6 +162,37 @@ function emptyState() {
   };
 }
 
+function reconcileInPeriodStatuses(pools, tasks) {
+  let changed = false;
+
+  pools.forEach((pool) => {
+    if (!pool.start || !pool.end || today < pool.start || today > pool.end) return;
+    if (pool.status !== "active") {
+      pool.status = "active";
+      changed = true;
+    }
+  });
+
+  tasks.forEach((task) => {
+    const pool = task.poolId
+      ? pools.find((item) => item.id === task.poolId)
+      : pools.find((item) => (task.quizId && item.sourceQuizId === task.quizId)
+        || (task.sourceGoalId && item.sourceGoalId === task.sourceGoalId));
+    if (!pool?.start || !pool.end || today < pool.start || today > pool.end) return;
+    if (task.completed) {
+      if (task.status === "closed") {
+        task.status = "active";
+        changed = true;
+      }
+    } else if (task.status === "closed") {
+      task.status = "active";
+      changed = true;
+    }
+  });
+
+  return changed;
+}
+
 function normalizeState(stored) {
   stored = stored && typeof stored === "object" ? stored : {};
   const events = Array.isArray(stored.events) ? stored.events : [];
@@ -433,6 +464,7 @@ async function loadUserState(user) {
       (changed, pool) => syncTaskProgress(pool.id) || changed,
       false,
     );
+    taskProgressReconciled = reconcileInPeriodStatuses(state.pools, state.tasks) || taskProgressReconciled;
     loadStage = "端末にユーザーデータを一時保存";
     firestoreStateRef = stateRef;
     try {
@@ -594,6 +626,7 @@ function taskMeetsMinimum(task, amount) {
 }
 
 function render() {
+  reconcileInPeriodStatuses(state.pools, state.tasks);
   elements.dateLabel.textContent = formatDate(today, { month: "long", day: "numeric", weekday: "short" });
   renderSubjectOptions();
   renderEventOptions();
@@ -965,7 +998,8 @@ function scheduleEventRefresh() {
     }
     const schedulesMoved = moveDueSchedulesToPools();
     const pastTasksCompleted = completeAchievedPastTasks();
-    if (schedulesMoved || pastTasksCompleted) saveState();
+    const statusesReconciled = reconcileInPeriodStatuses(state.pools, state.tasks);
+    if (schedulesMoved || pastTasksCompleted || statusesReconciled) saveState();
     else render();
     renderCalendar();
     scheduleEventRefresh();
@@ -2552,6 +2586,7 @@ document.querySelector("#task-form").addEventListener("submit", (event) => {
       id: createId(), poolId: pool.id, ...(pool.sourceQuizId ? { quizId: pool.sourceQuizId } : {}),
       title: pool.title, subject: pool.subject, unit: pool.unit,
       scope: pool.scope || "", scopeUnit: pool.scopeUnit || "", minimum, date: today, completed: false,
+      status: "active",
       memo: form.elements.memo.value.trim(),
     });
   }
@@ -2756,7 +2791,7 @@ function carryOverdueTasksToToday() {
     archiveTaskRecord(task);
     const minimum = Number(input.value);
     const memo = form.querySelector(`[data-carry-memo="${CSS.escape(input.dataset.carryTask)}"]`)?.value.trim() || "";
-    delete task.status;
+    task.status = "active";
     const existingTodayTask = state.tasks.find((item) =>
       item.id !== task.id
       && item.date === today
@@ -2765,6 +2800,7 @@ function carryOverdueTasksToToday() {
       && (task.poolId ? item.poolId === task.poolId : task.quizId && item.quizId === task.quizId));
 
     if (existingTodayTask) {
+      existingTodayTask.status = "active";
       existingTodayTask.minimum += minimum;
       existingTodayTask.actual = (existingTodayTask.actual || 0) + archivedAmount;
       existingTodayTask.studyLogs ||= [];
