@@ -992,7 +992,9 @@ function renderTaskCard(task) {
     ? `<button class="text-button icon-action" type="button" data-return-task="${escapeHtml(task.id)}" aria-label="週間プールへ戻す" title="${hasTaskProgress(task) ? "実績や勉強記録があるToDoは戻せません" : "週間プールへ戻す"}"${hasTaskProgress(task) ? " disabled" : ""}>↩️</button>`
     : "";
   const completeLabel = task.completed ? "記録済み" : "実績を記録";
-  const recorded = task.actual || 0;
+  const isToday = task.date === today;
+  const recorded = isToday ? getTaskStudyRecordOnDate(task, today).amount : task.actual || 0;
+  const completionLabel = isToday ? "今日の実施量" : "累計";
   const achieved = recorded >= task.minimum;
   const surplus = task.completed && achieved && recorded > task.minimum
     ? `<span class="surplus">＋${recorded - task.minimum} ${escapeHtml(unit)} できた！</span>`
@@ -1027,7 +1029,7 @@ function renderTaskCard(task) {
     <div class="task-card-summary">
       <div class="task-main">
         <button class="card-title detail-title" type="button" data-task-details="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の詳細を表示">${escapeHtml(title)}</button>
-        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ 累計 ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(getTaskStudySeconds(task))}</p>
+        <p class="task-detail">${date}${escapeHtml(subject)} ・ ${taskState} ・ 最低 ${task.minimum} ${escapeHtml(unit)} ・ ${completionLabel} ${recorded} ${escapeHtml(unit)} ・ 勉強 ${formatDuration(getTaskStudySeconds(task))}</p>
       </div>
       ${(surplus || shortfall) ? `<div class="task-remainder">${surplus}${shortfall}</div>` : ""}
     </div>
