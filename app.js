@@ -182,6 +182,7 @@ function reconcileInPeriodStatuses(pools, tasks) {
   });
 
   tasks.forEach((task) => {
+    if (task.carriedToDate) return;
     const pool = task.poolId
       ? pools.find((item) => item.id === task.poolId)
       : pools.find((item) => (task.quizId && item.sourceQuizId === task.quizId)
@@ -242,6 +243,9 @@ function normalizeState(stored) {
   });
   tasks.forEach((task) => {
     task.memo = typeof task.memo === "string" ? task.memo.slice(0, 2000) : "";
+    task.carriedToDate = typeof task.carriedToDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(task.carriedToDate)
+      ? task.carriedToDate
+      : "";
   });
   pools.forEach((pool) => {
     if (pool.scope === "長期計画の提出日" && pool.deadline) {
@@ -998,16 +1002,18 @@ function renderTaskCard(task) {
     : "";
   const taskState = task.completed
     ? "完了"
-    : task.status === "closed"
-      ? "終了"
-      : achieved
-        ? "最低達成・継続中"
-        : recorded > 0
-          ? "記録あり"
-          : "未着手";
+    : task.carriedToDate
+      ? "繰り越し済み"
+      : task.status === "closed"
+        ? "終了"
+        : achieved
+          ? "最低達成・継続中"
+          : recorded > 0
+            ? "記録あり"
+            : "未着手";
   const isPast = task.date < today;
   const date = isPast ? `${formatDate(task.date, { month: "numeric", day: "numeric", weekday: "short" })} ・ ` : "";
-  const carryButtons = isPast && !task.completed
+  const carryButtons = isPast && !task.completed && !task.carriedToDate
     ? isExpiredPoolTask(task)
       ? `<button class="text-button" type="button" data-carry-weekly-task="${escapeHtml(task.id)}">残りを繰り越す</button><button class="text-button" type="button" data-decline-weekly-task="${escapeHtml(task.id)}">繰り越さない</button>`
       : task.status !== "closed"
@@ -2913,11 +2919,11 @@ function carryOverdueTasksToToday() {
       addRunningTimeToTask(state.studyTimer, Date.now());
       state.studyTimer = null;
     }
-    const archivedAmount = Number(task.actual || 0);
     archiveTaskRecord(task);
     const minimum = Number(input.value);
     const memo = form.querySelector(`[data-carry-memo="${CSS.escape(input.dataset.carryTask)}"]`)?.value.trim() || "";
-    task.status = "active";
+    task.status = "closed";
+    task.carriedToDate = today;
     const existingTodayTask = state.tasks.find((item) =>
       item.id !== task.id
       && item.date === today
@@ -2928,18 +2934,24 @@ function carryOverdueTasksToToday() {
     if (existingTodayTask) {
       existingTodayTask.status = "active";
       existingTodayTask.minimum += minimum;
-      existingTodayTask.actual = (existingTodayTask.actual || 0) + archivedAmount;
-      existingTodayTask.studyLogs ||= [];
-      existingTodayTask.studyLogs.push(...(task.studyLogs || []));
       existingTodayTask.memo = [existingTodayTask.memo, memo].filter((value, index, values) => value && values.indexOf(value) === index).join("\n");
       existingTodayTask.completed = existingTodayTask.actual >= existingTodayTask.minimum;
-      state.tasks = state.tasks.filter((item) => item.id !== task.id);
       return;
     }
 
-    task.date = today;
-    task.minimum = minimum;
-    task.memo = memo;
+    state.tasks.push({
+      ...task,
+      id: createId(),
+      date: today,
+      minimum,
+      actual: 0,
+      studySeconds: 0,
+      studyLogs: [],
+      completed: false,
+      status: "active",
+      carriedToDate: "",
+      memo,
+    });
   });
   saveStateAndClose(elements.carryOverdueDialog, form);
 }
@@ -3019,13 +3031,15 @@ function openTaskDetails(task) {
   const unit = pool?.unit || task.unit || "";
   const status = task.completed
     ? "完了"
-    : task.status === "closed"
-      ? "終了"
-      : recorded >= task.minimum
-        ? "最低量達成・継続中"
-        : recorded > 0
-          ? "記録あり"
-          : "未着手";
+    : task.carriedToDate
+      ? "繰り越し済み"
+      : task.status === "closed"
+        ? "終了"
+        : recorded >= task.minimum
+          ? "最低量達成・継続中"
+          : recorded > 0
+            ? "記録あり"
+            : "未着手";
   const studyLogs = (task.studyLogs || []).map((log) =>
     `${formatDetailDate(log.date)}：勉強 ${formatDetailDuration(log.seconds)}、実施量 ${log.amount} ${unit}`.trim());
   const details = [
