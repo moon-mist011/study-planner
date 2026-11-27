@@ -450,7 +450,6 @@ button.calendar-cell:hover { background: #f7faf6; }
 .calendar-archive-subjects time { color: var(--green-dark); text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .calendar-archive-total-button { min-height: 40px; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; }
-.calendar-archive-total-button::after { content: " ▸"; font-size: 14px; }
 
 .calendar-subject-bar-track { grid-column: 1 / -1; height: 8px; background: #e0ebe1; }
 
@@ -470,7 +469,18 @@ button.calendar-cell:hover { background: #f7faf6; }
 .analytics-list li > span:first-child { overflow-wrap: anywhere; }
 .analytics-list i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; }
 .analytics-list time { text-align: right; }
-.analytics-trend li { grid-template-columns: 40px minmax(0, 1fr) 56px; }
 .analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .analytics-card { display: grid; gap: 5px; align-content: start; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 10px; }
 .analytics-card b { color: var(--green-dark); font-size: 18px; }
+.analytics-chart { display: flex; align-items: flex-start; }
+.analytics-chart svg { display: block; font-size: 9px; fill: #738078; }
+.analytics-axis { flex: 0 0 auto; }
+.analytics-chart-scroll { flex: 1; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.analytics-grid-line { stroke: var(--line); stroke-width: 1; }
+.analytics-line { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; }
+.analytics-dot { fill: var(--green); }
+.analytics-hit { fill: transparent; cursor: pointer; }
+.analytics-point-value { margin: 8px 0 0; text-align: center; color: var(--green-dark); font-size: 11px; }
+
+.analytics-pie { cursor: pointer; }
+.analytics-pie-value { margin: -6px 0 14px; text-align: center; color: var(--green-dark); font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }

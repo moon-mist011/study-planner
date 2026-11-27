@@ -3427,15 +3427,21 @@ if (analyticsHeading) {
     '<button class="button button-secondary button-small" type="button" data-open-analytics>詳細</button>');
 }
 
-function getTaskGoalId(task) {
+function getTaskEventId(task) {
   const pool = state.pools.find((item) => item.id === task.poolId);
-  return pool?.goalId || pool?.sourceGoalId || task.sourceGoalId || "";
+  const goalId = pool?.goalId || pool?.sourceGoalId || task.sourceGoalId;
+  const goal = state.goals.find((item) => item.id === goalId);
+  if (goal) return goal.eventId || "";
+  const quizId = task.quizId || pool?.sourceQuizId;
+  const quiz = state.quizzes.find((item) => item.id === quizId);
+  if (quiz) return quiz.eventId || "";
+  return pool?.eventId || "";
 }
 
-function getAnalyticsRecords(goalId) {
+function getAnalyticsRecords(eventId) {
   const records = [];
   state.tasks.forEach((task) => {
-    if (goalId && getTaskGoalId(task) !== goalId) return;
+    if (eventId && getTaskEventId(task) !== eventId) return;
     const subject = getTaskSubject(task) || "科目未設定";
     const add = (date, seconds) => {
       if (date && seconds > 0) records.push({ date, subject, seconds });
@@ -3472,7 +3478,17 @@ function renderAnalyticsPie(records) {
     position += (seconds / total) * 100;
     return { subject, seconds, color, slice: `${color} ${start}% ${position}%` };
   });
-  return `<div class="analytics-pie" style="background:conic-gradient(${items.map((item) => item.slice).join(",")})" aria-hidden="true"></div>
+    let end = 0;
+  const pieData = items.map((item) => {
+    const percent = (item.seconds / total) * 100;
+    end += percent;
+    return {
+      end,
+      label: `${item.subject}：${formatDuration(item.seconds)}（${Math.round(percent)}%）`,
+    };
+  });
+    return `<div class="analytics-pie" style="background:conic-gradient(${items.map((item) => item.slice).join(",")})" data-pie="${escapeHtml(JSON.stringify(pieData))}" aria-hidden="true"></div>
+    <p class="analytics-pie-value" aria-live="polite">グラフをタップすると科目を表示します。</p>
     <ul class="analytics-list">${items.map((item) => `<li>
       <span><i style="background:${item.color}"></i>${escapeHtml(item.subject)}</span>
       <span>${Math.round((item.seconds / total) * 100)}%</span>
@@ -3506,16 +3522,56 @@ function renderAnalyticsComparison(records) {
 
 function renderAnalyticsTrend(records) {
   const daily = groupSeconds(records, "date");
-  const days = Array.from({ length: 14 }, (_, index) => {
-    const date = shiftDate(today, index - 13);
-    return { date, seconds: daily.get(date) || 0 };
-  });
-  const longest = Math.max(1, ...days.map((item) => item.seconds));
-  return `<ul class="analytics-list analytics-trend">${days.map((item) => `<li>
-    <span>${formatDate(item.date)}</span>
-    <span class="calendar-archive-bar-track" aria-hidden="true"><span class="calendar-archive-bar" style="display:${item.seconds ? "block" : "none"};width:${(item.seconds / longest) * 100}%"></span></span>
-    <time>${formatCalendarDuration(item.seconds)}</time>
-  </li>`).join("")}</ul>`;
+  const dates = [...daily.keys()].sort();
+  const lastDate = dates[dates.length - 1] > today ? dates[dates.length - 1] : today;
+  const days = [];
+  for (let date = dates[0]; date <= lastDate; date = shiftDate(date, 1)) {
+    days.push({ date, seconds: daily.get(date) || 0 });
+  }
+
+  // 目盛りの間隔（分）。区切りが5つ以内になるものを選ぶ
+  const maxMinutes = Math.max(...days.map((day) => day.seconds)) / 60;
+  const step = [5, 10, 15, 30, 60, 120, 180, 240, 360]
+    .find((value) => maxMinutes / value <= 5) || Math.ceil(maxMinutes / 300) * 60;
+  const topMinutes = Math.max(1, Math.ceil(maxMinutes / step)) * step;
+
+  const spacing = 40;
+  const padding = 24;
+  const top = 12;
+  const bottom = 162;
+  const height = 196;
+  const width = padding * 2 + (days.length - 1) * spacing;
+  const x = (index) => padding + index * spacing;
+  const y = (minutes) => bottom - (minutes / topMinutes) * (bottom - top);
+  const ticks = Array.from({ length: topMinutes / step + 1 }, (_, index) => index * step);
+
+  const axis = ticks.map((tick) => (
+    `<text x="48" y="${y(tick) + 3}" text-anchor="end">${formatCalendarDuration(tick * 60)}</text>`
+  )).join("");
+  const gridLines = ticks.map((tick) => (
+    `<line class="analytics-grid-line" x1="0" x2="${width}" y1="${y(tick)}" y2="${y(tick)}" />`
+  )).join("");
+  const line = days.map((day, index) => `${x(index)},${y(day.seconds / 60)}`).join(" ");
+  const points = days.map((day, index) => {
+    const label = `${formatDate(day.date, { year: "numeric", month: "numeric", day: "numeric" })}：${formatDuration(day.seconds)}`;
+    const showYear = index === 0 || day.date.endsWith("-01-01");
+    return `<text x="${x(index)}" y="178" text-anchor="middle">${formatDate(day.date)}</text>
+      ${showYear ? `<text x="${x(index)}" y="191" text-anchor="middle">${day.date.slice(0, 4)}</text>` : ""}
+      <circle class="analytics-dot" cx="${x(index)}" cy="${y(day.seconds / 60)}" r="3.5" />
+      <circle class="analytics-hit" cx="${x(index)}" cy="${y(day.seconds / 60)}" r="16" data-chart-label="${label}"><title>${label}</title></circle>`;
+  }).join("");
+
+  return `<div class="analytics-chart">
+      <svg class="analytics-axis" width="52" height="${height}" aria-hidden="true">${axis}</svg>
+      <div class="analytics-chart-scroll" tabindex="0">
+        <svg width="${width}" height="${height}" role="img" aria-label="日別の学習時間の折れ線グラフ">
+          ${gridLines}
+          <polyline class="analytics-line" points="${line}" />
+          ${points}
+        </svg>
+      </div>
+    </div>
+    <p class="analytics-point-value" aria-live="polite">点をタップすると詳しい時間を表示します。</p>`;
 }
 
 function renderAnalyticsHabits(records) {
@@ -3546,26 +3602,29 @@ function renderAnalyticsHabits(records) {
 }
 
 function renderAnalytics() {
-  const goalId = analyticsDialog.querySelector("[data-analytics-goal]").value;
-  const records = getAnalyticsRecords(goalId);
+    const eventId = analyticsDialog.querySelector("[data-analytics-goal]").value;
+  const records = getAnalyticsRecords(eventId);
   const body = analyticsDialog.querySelector("[data-analytics-body]");
   const total = `<p class="analytics-total">${formatDuration(sumSeconds(records))}</p>`;
   body.innerHTML = records.length
     ? `${total}
       <h3>科目別学習時間</h3>${renderAnalyticsPie(records)}
       <h3>期間比較</h3>${renderAnalyticsComparison(records)}
-      <h3>直近14日の推移</h3>${renderAnalyticsTrend(records)}
+      <h3>日別の学習時間の推移</h3>${renderAnalyticsTrend(records)}
       <h3>学習習慣</h3>${renderAnalyticsHabits(records)}`
     : `${total}<p class="muted-empty">学習時間の記録はまだありません。</p>`;
+  requestAnimationFrame(() => {
+    const scroll = body.querySelector(".analytics-chart-scroll");
+    if (scroll) scroll.scrollLeft = scroll.scrollWidth;
+  });
 }
 
 document.addEventListener("click", (event) => {
   if (!event.target.closest("[data-open-analytics]")) return;
   const select = analyticsDialog.querySelector("[data-analytics-goal]");
-  select.innerHTML = `<option value="">すべて</option>${state.goals.map((goal) => {
-    const parent = state.events.find((item) => item.id === goal.eventId);
-    return `<option value="${escapeHtml(goal.id)}">${escapeHtml(`${parent?.title || "イベント未設定"} ／ ${goal.subject || "科目未設定"} ／ ${goal.title}`)}</option>`;
-  }).join("")}`;
+    select.innerHTML = `<option value="">すべて</option>${state.events
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)}</option>`)
+    .join("")}`;
   renderAnalytics();
   analyticsDialog.showModal();
   analyticsDialog.scrollTop = 0;
@@ -3705,4 +3764,24 @@ recordEditDialog.querySelector("form").addEventListener("submit", (event) => {
   }
   editingRecord = null;
   recordEditDialog.close();
+});
+
+analyticsDialog.addEventListener("click", (event) => {
+  const point = event.target.closest("[data-chart-label]");
+  if (!point) return;
+  analyticsDialog.querySelector(".analytics-point-value").textContent = point.dataset.chartLabel;
+});
+
+analyticsDialog.addEventListener("click", (event) => {
+  const pie = event.target.closest("[data-pie]");
+  if (!pie) return;
+  const rect = pie.getBoundingClientRect();
+  const dx = event.clientX - (rect.left + rect.width / 2);
+  const dy = event.clientY - (rect.top + rect.height / 2);
+  if (Math.hypot(dx, dy) > rect.width / 2) return;
+  // 真上を0%として、時計回りの位置を求める
+  const position = ((Math.atan2(dx, -dy) / (2 * Math.PI)) * 100 + 100) % 100;
+  const slices = JSON.parse(pie.dataset.pie);
+  const slice = slices.find((item) => position < item.end) || slices[slices.length - 1];
+  analyticsDialog.querySelector(".analytics-pie-value").textContent = slice.label;
 });
