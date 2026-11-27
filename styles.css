@@ -440,3 +440,16 @@ button.calendar-cell:hover { background: #f7faf6; }
   .dashboard-grid, .calendar-layout { grid-template-columns: 1fr; }
   .calendar-layout { gap: 14px; }
 }
+
+.calendar-archive-month { width: 100%; min-height: 32px; padding: 0; border: 0; background: transparent; text-align: left; }
+.calendar-archive-month-label::before { content: "▸"; margin-right: 3px; }
+.calendar-archive-month[aria-expanded="true"] .calendar-archive-month-label::before { content: "▾"; }
+.calendar-archive-subjects { display: grid; gap: 8px; margin: 6px 0 0; padding: 10px 12px; border-radius: 9px; background: #f3f8f3; list-style: none; font-size: 11px; }
+.calendar-archive-subjects li { display: grid; grid-template-columns: minmax(0, 1fr) 40px 72px; gap: 8px; }
+.calendar-archive-subjects li span:first-child { overflow-wrap: anywhere; }
+.calendar-archive-subjects li span:nth-child(2) { color: #7d8982; text-align: right; }
+.calendar-archive-subjects time { color: var(--green-dark); text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.calendar-archive-total-button { min-height: 40px; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; }
+.calendar-archive-total-button::after { content: " ▸"; font-size: 14px; }
+.calendar-archive-total-button[aria-expanded="true"]::after { content: " ▾"; }

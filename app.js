@@ -93,6 +93,7 @@ let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
 let selectedCalendarDate = today;
 let miniCalendarSelectedDate = "";
 let calendarRenderedMinute = -1;
+const openArchiveMonths = new Set();
 const subjectFilters = new Map([
   ["today", new Set()],
   ["events", new Set()],
@@ -345,7 +346,7 @@ function queueCloudWrite(user, stateRef, data, updatedAt) {
     .catch((error) => {
       console.error("Firestoreへのデータ保存に失敗しました。", error);
       if (currentUser?.uid === user.uid) {
-        setAuthMessage("クラウドへの同期に失敗しました。通信状態を確認して再同期してください。", true);
+        setAuthMessage("同期に失敗しました。通信状態を確認して再同期してください。", true);
       }
     });
   return saveQueue;
@@ -1454,39 +1455,87 @@ function renderCalendar() {
   renderStudyArchive();
 }
 
+function renderSubjectBreakdown(subjects, totalSeconds) {
+  return [...subjects]
+    .sort((a, b) => b[1] - a[1] || getSubjectOrder(a[0]) - getSubjectOrder(b[0]))
+    .map(([subject, seconds]) => `<li>
+      <span>${escapeHtml(subject)}</span>
+      <span>${Math.round((seconds / totalSeconds) * 100)}%</span>
+      <time>${formatDuration(seconds)}</time>
+    </li>`)
+    .join("");
+}
+
 function renderStudyArchive() {
-  const monthlySeconds = new Map();
-  const addStudyTime = (date, seconds) => {
+  // 月 → (科目 → 秒数)
+  const monthlySubjects = new Map();
+  const addStudyTime = (date, subject, seconds) => {
     if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
     const recordedSeconds = Number(seconds);
     if (!Number.isFinite(recordedSeconds) || recordedSeconds <= 0) return;
     const month = date.slice(0, 7);
-    monthlySeconds.set(month, (monthlySeconds.get(month) || 0) + recordedSeconds);
+    const subjects = monthlySubjects.get(month) || new Map();
+    subjects.set(subject, (subjects.get(subject) || 0) + recordedSeconds);
+    monthlySubjects.set(month, subjects);
   };
 
   state.tasks.forEach((task) => {
-    if (!matchesSubjectFilter("calendar", getTaskSubject(task))) return;
-    addStudyTime(task.date, task.studySeconds);
-    (task.studyLogs || []).forEach((log) => addStudyTime(log.date, log.seconds));
+    const taskSubject = getTaskSubject(task);
+    if (!matchesSubjectFilter("calendar", taskSubject)) return;
+    const subject = taskSubject || "科目未設定";
+    addStudyTime(task.date, subject, task.studySeconds);
+    (task.studyLogs || []).forEach((log) => addStudyTime(log.date, subject, log.seconds));
     if (state.studyTimer?.taskId === task.id && state.studyTimer.startedAt) {
-      addStudyTime(task.date, Math.max(0, Math.floor((Date.now() - state.studyTimer.startedAt) / 1000)));
+      addStudyTime(task.date, subject, Math.max(0, Math.floor((Date.now() - state.studyTimer.startedAt) / 1000)));
     }
   });
 
-  const months = [...monthlySeconds].sort(([first], [second]) => first.localeCompare(second));
-  const totalSeconds = months.reduce((total, [, seconds]) => total + seconds, 0);
-  const longestMonth = Math.max(0, ...months.map(([, seconds]) => seconds));
-  elements.calendarArchiveTotal.textContent = formatDuration(totalSeconds);
+  const months = [...monthlySubjects]
+    .map(([month, subjects]) => ({
+      month,
+      subjects,
+      seconds: [...subjects.values()].reduce((total, value) => total + value, 0),
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+  const totalSeconds = months.reduce((total, item) => total + item.seconds, 0);
+  const longestMonth = Math.max(0, ...months.map((item) => item.seconds));
+    const allSubjects = new Map();
+  months.forEach(({ subjects }) => {
+    subjects.forEach((seconds, subject) => {
+      allSubjects.set(subject, (allSubjects.get(subject) || 0) + seconds);
+    });
+  });
+
+  let totalList = document.querySelector("#calendar-archive-total-subjects");
+  if (!totalList) {
+    totalList = document.createElement("ul");
+    totalList.id = "calendar-archive-total-subjects";
+    totalList.className = "calendar-archive-subjects";
+    elements.calendarArchiveTotal.insertAdjacentElement("afterend", totalList);
+  }
+  const isTotalOpen = openArchiveMonths.has("all");
+  if (months.length) {
+    elements.calendarArchiveTotal.innerHTML = `<button class="calendar-archive-total-button" type="button" data-archive-month="all" aria-expanded="${isTotalOpen}">${formatDuration(totalSeconds)}</button>`;
+  } else {
+    elements.calendarArchiveTotal.textContent = formatDuration(0);
+  }
+  totalList.innerHTML = renderSubjectBreakdown(allSubjects, totalSeconds);
+  totalList.hidden = !months.length || !isTotalOpen;
   elements.calendarArchiveEmpty.hidden = months.length > 0;
-  elements.calendarArchiveMonthList.innerHTML = months.map(([month, seconds]) => {
+  elements.calendarArchiveMonthList.innerHTML = months.map(({ month, subjects, seconds }) => {
     const [year, monthNumber] = month.split("-").map(Number);
     const label = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long" })
       .format(new Date(year, monthNumber - 1, 1));
     const barWidth = Math.max(3, (seconds / longestMonth) * 100);
-    return `<li class="calendar-archive-month">
-      <span class="calendar-archive-month-label">${label}</span>
-      <span class="calendar-archive-bar-track" aria-hidden="true"><span class="calendar-archive-bar" style="width:${barWidth}%"></span></span>
-      <time>${formatDuration(seconds)}</time>
+    const isOpen = openArchiveMonths.has(month);
+        const subjectRows = renderSubjectBreakdown(subjects, seconds);
+    return `<li>
+      <button class="calendar-archive-month" type="button" data-archive-month="${month}" aria-expanded="${isOpen}">
+        <span class="calendar-archive-month-label">${label}</span>
+        <span class="calendar-archive-bar-track" aria-hidden="true"><span class="calendar-archive-bar" style="width:${barWidth}%"></span></span>
+        <time>${formatDuration(seconds)}</time>
+      </button>
+      <ul class="calendar-archive-subjects"${isOpen ? "" : " hidden"}>${subjectRows}</ul>
     </li>`;
   }).join("");
 }
@@ -2048,6 +2097,14 @@ document.addEventListener("click", (event) => {
     calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     selectedCalendarDate = today;
     renderCalendar();
+    return;
+  }
+  const archiveMonthButton = event.target.closest("[data-archive-month]");
+  if (archiveMonthButton) {
+    const month = archiveMonthButton.dataset.archiveMonth;
+    if (openArchiveMonths.has(month)) openArchiveMonths.delete(month);
+    else openArchiveMonths.add(month);
+    renderStudyArchive();
     return;
   }
   const calendarDay = event.target.closest("[data-calendar-date]");
