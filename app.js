@@ -3529,7 +3529,7 @@ function renderAnalyticsTrend(records) {
     days.push({ date, seconds: daily.get(date) || 0 });
   }
 
-  // 目盛りの間隔（分）。区切りが5つ以内になるものを選ぶ
+  // 目盛りの間隔（分）
   const maxMinutes = Math.max(...days.map((day) => day.seconds)) / 60;
   const step = [5, 10, 15, 30, 60, 120, 180, 240, 360]
     .find((value) => maxMinutes / value <= 5) || Math.ceil(maxMinutes / 300) * 60;
@@ -3552,15 +3552,14 @@ function renderAnalyticsTrend(records) {
     `<line class="analytics-grid-line" x1="0" x2="${width}" y1="${y(tick)}" y2="${y(tick)}" />`
   )).join("");
   const line = days.map((day, index) => `${x(index)},${y(day.seconds / 60)}`).join(" ");
+
   const points = days.map((day, index) => {
     const label = `${formatDate(day.date, { year: "numeric", month: "numeric", day: "numeric" })}：${formatDuration(day.seconds)}`;
     const showYear = index === 0 || day.date.endsWith("-01-01");
-    const dateHit = `<rect class="analytics-date-hit" x="${x(index) - spacing / 2}" y="164" width="${spacing}" height="32" data-chart-date="${day.date}" />`;
     return `<text x="${x(index)}" y="178" text-anchor="middle">${formatDate(day.date)}</text>
       ${showYear ? `<text x="${x(index)}" y="191" text-anchor="middle">${day.date.slice(0, 4)}</text>` : ""}
       <circle class="analytics-dot" cx="${x(index)}" cy="${y(day.seconds / 60)}" r="3.5" />
-            <circle class="analytics-hit" cx="${x(index)}" cy="${y(day.seconds / 60)}" r="16" data-chart-label="${label}"><title>${label}</title></circle>
-      ${dateHit}`;
+      <rect class="analytics-date-hit" x="${x(index) - spacing / 2}" y="0" width="${spacing}" height="${height}" data-chart-date="${day.date}"><title>${label}</title></rect>`;
   }).join("");
 
   return `<div class="analytics-chart">
@@ -3573,10 +3572,9 @@ function renderAnalyticsTrend(records) {
         </svg>
       </div>
     </div>
-        <p class="analytics-point-value" aria-live="polite">点で時間、日付でその日の詳細を表示します。</p>
+    <p class="form-hint">グラフか日付をタップすると、その日の詳細を表示します。</p>
     <div class="analytics-day-detail" aria-live="polite"></div>`;
 }
-
 function renderAnalyticsHabits(records) {
   const pastRecords = records.filter((record) => record.date <= today);
   const daily = groupSeconds(pastRecords, "date");
@@ -3767,12 +3765,6 @@ recordEditDialog.querySelector("form").addEventListener("submit", (event) => {
   }
   editingRecord = null;
   recordEditDialog.close();
-});
-
-analyticsDialog.addEventListener("click", (event) => {
-  const point = event.target.closest("[data-chart-label]");
-  if (!point) return;
-  analyticsDialog.querySelector(".analytics-point-value").textContent = point.dataset.chartLabel;
 });
 
 analyticsDialog.addEventListener("click", (event) => {
