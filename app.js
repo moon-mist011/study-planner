@@ -1571,7 +1571,7 @@ function renderCalendarAgenda() {
     const subject = pool?.subject || task.subject || "科目未設定";
     const recordedAmount = amount > 0 ? `実績 ${amount} ${pool?.unit || task.unit || ""}` : "実績なし";
     const recording = tasks.some((item) => item.date === date && state.studyTimer?.taskId === item.id && state.studyTimer.startedAt);
-    return `<article class="calendar-study-item"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subject)} ・ ${escapeHtml(recordedAmount)}</span></div><div class="calendar-study-actions"><time>${formatDuration(seconds)}</time><button class="text-button icon-action delete-button" type="button" data-delete-study-record="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の勉強記録を削除" title="${recording ? "計測中は削除できません" : "削除"}"${recording ? " disabled" : ""}>🗑️</button></div></article>`;
+    return `<article class="calendar-study-item"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subject)} ・ ${escapeHtml(recordedAmount)}</span></div><div class="calendar-study-actions"><button class="text-button icon-action" type="button" data-edit-study-record="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の勉強記録を編集" title="${recording ? "計測中は編集できません" : "編集"}"${recording ? " disabled" : ""}>✏️</button><time>${formatDuration(seconds)}</time><button class="text-button icon-action delete-button" type="button" data-delete-study-record="${escapeHtml(task.id)}" aria-label="${escapeHtml(title)}の勉強記録を削除" title="${recording ? "計測中は削除できません" : "削除"}"${recording ? " disabled" : ""}>🗑️</button></div></article>`;
   }).join("");
 }
 
@@ -1818,7 +1818,17 @@ document.addEventListener("change", (event) => {
   }
 });
 
+function keepDeletedSubject(form, subject) {
+  if (!subject || state.settings.subjects.includes(subject)) return;
+  const select = form.elements.subject;
+  const option = new Option(`${subject}（削除済み）`, subject);
+  option.dataset.deletedSubject = "";
+  select.add(option);
+  select.value = subject;
+}
+
 function openDialog(dialog) {
+  dialog.querySelectorAll("option[data-deleted-subject]").forEach((option) => option.remove());
   const form = dialog.querySelector("form");
   if (form) {
     form.reset();
@@ -2211,6 +2221,7 @@ document.addEventListener("click", (event) => {
     const form = openEditDialog(elements.goalDialog, item, "長期目標を編集", "変更を保存");
     form.elements.eventId.value = item.eventId;
     form.elements.subject.value = item.subject;
+      keepDeletedSubject(form, item.subject);
     form.elements.title.value = item.title;
     form.elements.scope.value = item.scope || "";
     form.elements.unit.value = item.unit;
@@ -2256,6 +2267,7 @@ document.addEventListener("click", (event) => {
     setScheduleType(form, item.kind === "submission" ? "submission" : "quiz", item.period ? String(item.period) : "");
     form.elements.title.value = item.title || "";
     form.elements.subject.value = item.subject;
+       keepDeletedSubject(form, item.subject);
     form.elements.date.value = item.date;
     form.elements.scope.value = item.scope || "";
     form.elements.unit.value = item.unit || "";
@@ -2505,14 +2517,7 @@ document.querySelector("#settings-form").addEventListener("submit", (event) => {
   }
 
   const keptSubjects = new Set(rows.map((row) => row.dataset.originalSubject).filter(Boolean));
-  const removedSubjects = state.settings.subjects.filter((subject) => !keptSubjects.has(subject));
   const subjectRecords = [...state.goals, ...state.quizzes, ...state.pools, ...state.tasks];
-  const usedSubjects = new Set(subjectRecords.map((record) => record.subject).filter(Boolean));
-  const inUse = removedSubjects.find((subject) => usedSubjects.has(subject));
-  if (inUse) {
-    showError(form, `「${inUse}」は計画や予定で使用中のため削除できません。先に名称を変更してください。`);
-    return;
-  }
 
   const renamedSubjects = new Map(rows
     .filter((row) => row.dataset.originalSubject)
@@ -2563,7 +2568,7 @@ document.querySelector("#quiz-form").addEventListener("submit", (event) => {
   const editingQuiz = state.quizzes.find((quiz) => quiz.id === form.dataset.editId);
   const periodIsValid = period === null
     || (Number.isSafeInteger(period) && period >= 1 && (period <= state.settings.periodCount || period === editingQuiz?.period));
-  if (!["quiz", "submission"].includes(kind) || !title || !state.settings.subjects.includes(subject) || !date || !scope || (eventId && !associatedEvent) || (kind === "quiz" && period === null) || !periodIsValid) {
+  if (!["quiz", "submission"].includes(kind) || !title || (!state.settings.subjects.includes(subject) && subject !== editingQuiz?.subject) || !date || !scope || (eventId && !associatedEvent) || (kind === "quiz" && period === null) || !periodIsValid) {
     showError(form, `タイトル・範囲・科目・日付を正しく入力してください。小テストは1〜${state.settings.periodCount}校時を指定してください。`);
     return;
   }
@@ -2673,7 +2678,10 @@ goalForm.addEventListener("submit", (event) => {
     submissionDate: String(data.get("submissionDate") || ""),
     memo: String(data.get("memo") || "").trim(),
   };
-  if (!parentEvent || !state.settings.subjects.includes(goal.subject) || !goal.title || !goal.unit || !Number.isSafeInteger(goal.total) || goal.total < 1 || !Number.isSafeInteger(goal.laps) || goal.laps < 1) {
+  const originalSubject = form.dataset.editId
+    ? state.goals.find((item) => item.id === form.dataset.editId)?.subject
+    : undefined;
+  if (!parentEvent || (!state.settings.subjects.includes(goal.subject) && goal.subject !== originalSubject) || !goal.title || !goal.unit || !Number.isSafeInteger(goal.total) || goal.total < 1 || !Number.isSafeInteger(goal.laps) || goal.laps < 1) {
     showError(form, "イベント・科目を選択し、教材名・単位・量を正しく入力してください。");
     return;
   }
@@ -3459,7 +3467,7 @@ function renderAnalyticsPie(records) {
   let position = 0;
   const items = subjects.map(([subject, seconds]) => {
     // 科目の並び順で色を決める
-    const color = `hsl(${Math.round((150 + getSubjectOrder(subject) * 137.5) % 360)} 55% 55%)`;
+        const color = `hsl(${Math.round((150 + getAllSubjects().indexOf(subject) * 137.5) % 360)} 55% 55%)`;
     const start = position;
     position += (seconds / total) * 100;
     return { subject, seconds, color, slice: `${color} ${start}% ${position}%` };
@@ -3565,3 +3573,136 @@ document.addEventListener("click", (event) => {
 
 analyticsDialog.querySelector("[data-analytics-goal]")
   .addEventListener("change", renderAnalytics);
+
+// ===== 勉強記録の編集 =====
+const recordEditDialog = document.createElement("dialog");
+recordEditDialog.className = "modal";
+recordEditDialog.innerHTML = `
+  <form novalidate>
+    <div class="modal-heading">
+      <h2>勉強記録を編集</h2>
+      <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
+    </div>
+    <p class="modal-description" data-record-edit-title></p>
+    <div class="form-row">
+      <label>勉強時間（分）<input name="minutes" type="number" min="0" step="1" inputmode="numeric" required></label>
+      <label>秒<input name="seconds" type="number" min="0" max="59" step="1" inputmode="numeric" required></label>
+    </div>
+    <label><span data-record-edit-unit>実施量</span><input name="amount" type="number" min="0" step="1" inputmode="numeric" required></label>
+    <p class="form-error" role="alert"></p>
+    <div class="modal-actions">
+      <button class="button button-quiet" type="button" data-close-dialog>キャンセル</button>
+      <button class="button button-primary" type="submit">変更を保存</button>
+    </div>
+  </form>`;
+document.body.append(recordEditDialog);
+let editingRecord = null;
+
+function getStudyRecordGroup(taskId, date) {
+  const selected = state.tasks.find((task) => task.id === taskId);
+  if (!selected) return [];
+  const key = getStudyTaskGroupKey(selected);
+  return state.tasks
+    .filter((task) => getStudyTaskGroupKey(task) === key)
+    .map((task) => ({ task, ...getTaskStudyRecordOnDate(task, date) }))
+    .filter((item) => item.seconds > 0 || item.amount > 0);
+}
+
+// 増えた分は最初の記録に足し、減った分は順に差し引く
+function distributeTotal(values, newTotal) {
+  let difference = newTotal - values.reduce((total, value) => total + value, 0);
+  return values.map((value, index) => {
+    if (difference > 0 && index === 0) return value + difference;
+    if (difference >= 0) return value;
+    const reduction = Math.min(value, -difference);
+    difference += reduction;
+    return value - reduction;
+  });
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-edit-study-record]");
+  if (!button) return;
+  const taskId = button.dataset.editStudyRecord;
+  const date = selectedCalendarDate;
+  const group = getStudyRecordGroup(taskId, date);
+  if (!group.length) return;
+  const seconds = group.reduce((total, item) => total + item.seconds, 0);
+  const amount = group.reduce((total, item) => total + item.amount, 0);
+  const task = group[0].task;
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  const form = recordEditDialog.querySelector("form");
+  editingRecord = { taskId, date };
+  form.elements.minutes.value = Math.floor(seconds / 60);
+  form.elements.seconds.value = seconds % 60;
+  form.elements.amount.value = amount;
+  recordEditDialog.querySelector("[data-record-edit-title]").textContent =
+    `${formatDate(date, { year: "numeric", month: "long", day: "numeric" })} ・ ${pool?.title || task.title}`;
+  recordEditDialog.querySelector("[data-record-edit-unit]").textContent =
+    `実施量（${pool?.unit || task.unit || "単位なし"}）`;
+  showError(form, "");
+  recordEditDialog.showModal();
+});
+
+recordEditDialog.querySelector("form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!editingRecord) return;
+  const values = ["minutes", "seconds", "amount"].map((name) => (
+    form.elements[name].value === "" ? NaN : Number(form.elements[name].value)
+  ));
+  const [minutes, extraSeconds, newAmount] = values;
+  const newSeconds = minutes * 60 + extraSeconds;
+  if (!values.every((value) => Number.isSafeInteger(value) && value >= 0)
+    || extraSeconds > 59 || !Number.isSafeInteger(newSeconds)) {
+    showError(form, "0以上の整数を入力してください（秒は0〜59）。");
+    return;
+  }
+  if (newSeconds === 0 && newAmount === 0) {
+    showError(form, "記録を消す場合は、削除ボタンを使ってください。");
+    return;
+  }
+  const { taskId, date } = editingRecord;
+  const group = getStudyRecordGroup(taskId, date);
+  if (!group.length) {
+    showError(form, "編集する記録が見つかりません。");
+    return;
+  }
+  if (group.some(({ task }) => task.date === date
+    && state.studyTimer?.taskId === task.id && state.studyTimer.startedAt)) {
+    showError(form, "計測中の記録は編集できません。");
+    return;
+  }
+  const secondsList = distributeTotal(group.map((item) => item.seconds), newSeconds);
+  const amountList = distributeTotal(group.map((item) => item.amount), newAmount);
+  const affectedPoolIds = new Set();
+
+  group.forEach((item, index) => {
+    const { task } = item;
+    const seconds = secondsList[index];
+    const amount = amountList[index];
+    if (seconds === item.seconds && amount === item.amount) return;
+    task.studyLogs = (task.studyLogs || []).filter((log) => log.date !== date);
+    if (seconds > 0 || amount > 0) task.studyLogs.push({ date, seconds, amount });
+    if (task.date === date) task.studySeconds = 0;
+    if (amount !== item.amount) {
+      task.actual = Math.max(0, Number(task.actual || 0) - item.amount + amount);
+      if (amount < item.amount && task.actual < task.minimum) task.completed = false;
+      const pool = getTaskPool(task);
+      if (pool) affectedPoolIds.add(pool.id);
+    }
+    if (seconds !== item.seconds && task.date === date
+      && state.studyTimer?.taskId === task.id) {
+      state.studyTimer.elapsedSeconds = 0;
+      state.studyTimer.hasStarted = false;
+    }
+  });
+
+  affectedPoolIds.forEach(syncTaskProgress);
+  if (!saveState()) {
+    showError(form, "保存できませんでした。ログイン状態を確認してください。");
+    return;
+  }
+  editingRecord = null;
+  recordEditDialog.close();
+});
