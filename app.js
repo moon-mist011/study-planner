@@ -3555,10 +3555,12 @@ function renderAnalyticsTrend(records) {
   const points = days.map((day, index) => {
     const label = `${formatDate(day.date, { year: "numeric", month: "numeric", day: "numeric" })}：${formatDuration(day.seconds)}`;
     const showYear = index === 0 || day.date.endsWith("-01-01");
+    const dateHit = `<rect class="analytics-date-hit" x="${x(index) - spacing / 2}" y="164" width="${spacing}" height="32" data-chart-date="${day.date}" />`;
     return `<text x="${x(index)}" y="178" text-anchor="middle">${formatDate(day.date)}</text>
       ${showYear ? `<text x="${x(index)}" y="191" text-anchor="middle">${day.date.slice(0, 4)}</text>` : ""}
       <circle class="analytics-dot" cx="${x(index)}" cy="${y(day.seconds / 60)}" r="3.5" />
-      <circle class="analytics-hit" cx="${x(index)}" cy="${y(day.seconds / 60)}" r="16" data-chart-label="${label}"><title>${label}</title></circle>`;
+            <circle class="analytics-hit" cx="${x(index)}" cy="${y(day.seconds / 60)}" r="16" data-chart-label="${label}"><title>${label}</title></circle>
+      ${dateHit}`;
   }).join("");
 
   return `<div class="analytics-chart">
@@ -3571,7 +3573,8 @@ function renderAnalyticsTrend(records) {
         </svg>
       </div>
     </div>
-    <p class="analytics-point-value" aria-live="polite">点をタップすると詳しい時間を表示します。</p>`;
+        <p class="analytics-point-value" aria-live="polite">点で時間、日付でその日の詳細を表示します。</p>
+    <div class="analytics-day-detail" aria-live="polite"></div>`;
 }
 
 function renderAnalyticsHabits(records) {
@@ -3784,4 +3787,40 @@ analyticsDialog.addEventListener("click", (event) => {
   const slices = JSON.parse(pie.dataset.pie);
   const slice = slices.find((item) => position < item.end) || slices[slices.length - 1];
   analyticsDialog.querySelector(".analytics-pie-value").textContent = slice.label;
+});
+
+function renderAnalyticsDayDetail(date, eventId) {
+  const groups = new Map();
+  state.tasks.forEach((task) => {
+    if (eventId && getTaskEventId(task) !== eventId) return;
+    const { seconds, amount } = getTaskStudyRecordOnDate(task, date);
+    if (!seconds && !amount) return;
+    const key = getStudyTaskGroupKey(task);
+    const group = groups.get(key) || { task, seconds: 0, amount: 0 };
+    group.seconds += seconds;
+    group.amount += amount;
+    groups.set(key, group);
+  });
+  const items = [...groups.values()].sort((a, b) => b.seconds - a.seconds);
+  const total = items.reduce((sum, item) => sum + item.seconds, 0);
+  const rows = items.map(({ task, seconds, amount }) => {
+    const pool = state.pools.find((item) => item.id === task.poolId);
+    const amountText = amount ? ` ・ 実績 ${amount} ${pool?.unit || task.unit || ""}` : "";
+    return `<div class="analytics-card">
+      <strong>${escapeHtml(pool?.title || task.title)}</strong>
+      <span>${escapeHtml(getTaskSubject(task) || "科目未設定")} ・ ${formatDuration(seconds)}${escapeHtml(amountText)}</span>
+    </div>`;
+  }).join("");
+  return `<h4>${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "short" })}</h4>
+    <p>合計 ${formatDuration(total)}</p>
+    ${rows || '<p class="muted-empty">この日の記録はありません。</p>'}`;
+}
+
+analyticsDialog.addEventListener("click", (event) => {
+  const dateButton = event.target.closest("[data-chart-date]");
+  if (!dateButton) return;
+  const eventId = analyticsDialog.querySelector("[data-analytics-goal]").value;
+  const detail = analyticsDialog.querySelector(".analytics-day-detail");
+  detail.innerHTML = renderAnalyticsDayDetail(dateButton.dataset.chartDate, eventId);
+  detail.scrollIntoView({ block: "nearest", behavior: "smooth" });
 });
