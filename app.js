@@ -1456,12 +1456,14 @@ function renderCalendar() {
 }
 
 function renderSubjectBreakdown(subjects, totalSeconds) {
+  const longestSubject = Math.max(0, ...subjects.values());
   return [...subjects]
     .sort((a, b) => b[1] - a[1] || getSubjectOrder(a[0]) - getSubjectOrder(b[0]))
     .map(([subject, seconds]) => `<li>
       <span>${escapeHtml(subject)}</span>
       <span>${Math.round((seconds / totalSeconds) * 100)}%</span>
       <time>${formatDuration(seconds)}</time>
+      <span class="calendar-archive-bar-track calendar-subject-bar-track" aria-hidden="true"><span class="calendar-archive-bar" style="width:${(seconds / longestSubject) * 100}%"></span></span>
     </li>`)
     .join("");
 }
@@ -3394,3 +3396,172 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     });
   });
 }
+
+// ===== 学習分析 =====
+const analyticsDialog = document.createElement("dialog");
+analyticsDialog.className = "modal analytics-dialog";
+analyticsDialog.innerHTML = `
+  <div class="modal-heading">
+    <h2>学習分析</h2>
+    <button class="icon-button" type="button" data-close-dialog aria-label="閉じる">×</button>
+  </div>
+  <label>累計学習時間
+    <select data-analytics-goal></select>
+  </label>
+  <div data-analytics-body></div>`;
+document.body.append(analyticsDialog);
+
+const analyticsHeading = elements.calendarArchiveTotal
+  .closest(".calendar-archive-total")?.querySelector("h3");
+if (analyticsHeading) {
+  analyticsHeading.classList.add("analytics-heading");
+  analyticsHeading.insertAdjacentHTML("beforeend",
+    '<button class="button button-secondary button-small" type="button" data-open-analytics>詳細</button>');
+}
+
+function getTaskGoalId(task) {
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  return pool?.goalId || pool?.sourceGoalId || task.sourceGoalId || "";
+}
+
+function getAnalyticsRecords(goalId) {
+  const records = [];
+  state.tasks.forEach((task) => {
+    if (goalId && getTaskGoalId(task) !== goalId) return;
+    const subject = getTaskSubject(task) || "科目未設定";
+    const add = (date, seconds) => {
+      if (date && seconds > 0) records.push({ date, subject, seconds });
+    };
+    const running = state.studyTimer?.taskId === task.id && state.studyTimer.startedAt
+      ? Math.max(0, Math.floor((Date.now() - state.studyTimer.startedAt) / 1000))
+      : 0;
+    add(task.date, (task.studySeconds || 0) + running);
+    (task.studyLogs || []).forEach((log) => add(log.date, log.seconds));
+  });
+  return records;
+}
+
+function sumSeconds(records) {
+  return records.reduce((total, record) => total + record.seconds, 0);
+}
+
+function groupSeconds(records, key) {
+  const result = new Map();
+  records.forEach((record) => {
+    result.set(record[key], (result.get(record[key]) || 0) + record.seconds);
+  });
+  return result;
+}
+
+function renderAnalyticsPie(records) {
+  const total = sumSeconds(records);
+  const subjects = [...groupSeconds(records, "subject")].sort((a, b) => b[1] - a[1]);
+  let position = 0;
+  const items = subjects.map(([subject, seconds]) => {
+    // 科目の並び順で色を決める
+    const color = `hsl(${Math.round((150 + getSubjectOrder(subject) * 137.5) % 360)} 55% 55%)`;
+    const start = position;
+    position += (seconds / total) * 100;
+    return { subject, seconds, color, slice: `${color} ${start}% ${position}%` };
+  });
+  return `<div class="analytics-pie" style="background:conic-gradient(${items.map((item) => item.slice).join(",")})" aria-hidden="true"></div>
+    <ul class="analytics-list">${items.map((item) => `<li>
+      <span><i style="background:${item.color}"></i>${escapeHtml(item.subject)}</span>
+      <span>${Math.round((item.seconds / total) * 100)}%</span>
+      <time>${formatDuration(item.seconds)}</time>
+    </li>`).join("")}</ul>`;
+}
+
+function renderAnalyticsComparison(records) {
+  const between = (start, end) => sumSeconds(records.filter((r) => r.date >= start && r.date <= end));
+  const weekStart = getWeekStart(today);
+  const monthStart = `${today.slice(0, 8)}01`;
+  const previousMonthEnd = shiftDate(monthStart, -1);
+  const previousMonthStart = `${previousMonthEnd.slice(0, 8)}01`;
+  const day = Math.min(Number(today.slice(8)), Number(previousMonthEnd.slice(8)));
+  const previousMonthTo = `${previousMonthEnd.slice(0, 8)}${String(day).padStart(2, "0")}`;
+  const card = (title, current, previous) => {
+    const difference = current - previous;
+    const sign = difference > 0 ? "＋" : difference < 0 ? "−" : "±";
+    return `<div class="analytics-card">
+      <strong>${title}</strong>
+      <b>${formatCalendarDuration(current)}</b>
+      <span>前の期間 ${formatCalendarDuration(previous)}</span>
+      <span>差 ${sign}${formatCalendarDuration(Math.abs(difference))}</span>
+    </div>`;
+  };
+  return `<div class="analytics-grid">
+    ${card("今週", between(weekStart, today), between(shiftDate(weekStart, -7), shiftDate(today, -7)))}
+    ${card("今月", between(monthStart, today), between(previousMonthStart, previousMonthTo))}
+  </div>`;
+}
+
+function renderAnalyticsTrend(records) {
+  const daily = groupSeconds(records, "date");
+  const days = Array.from({ length: 14 }, (_, index) => {
+    const date = shiftDate(today, index - 13);
+    return { date, seconds: daily.get(date) || 0 };
+  });
+  const longest = Math.max(1, ...days.map((item) => item.seconds));
+  return `<ul class="analytics-list analytics-trend">${days.map((item) => `<li>
+    <span>${formatDate(item.date)}</span>
+    <span class="calendar-archive-bar-track" aria-hidden="true"><span class="calendar-archive-bar" style="display:${item.seconds ? "block" : "none"};width:${(item.seconds / longest) * 100}%"></span></span>
+    <time>${formatCalendarDuration(item.seconds)}</time>
+  </li>`).join("")}</ul>`;
+}
+
+function renderAnalyticsHabits(records) {
+  const pastRecords = records.filter((record) => record.date <= today);
+  const daily = groupSeconds(pastRecords, "date");
+  const dates = [...daily.keys()].sort();
+  let longest = 0;
+  let run = 0;
+  dates.forEach((date, index) => {
+    run = index > 0 && shiftDate(dates[index - 1], 1) === date ? run + 1 : 1;
+    longest = Math.max(longest, run);
+  });
+  // 今日が未記録なら、昨日までの連続日数を数える
+  let cursor = daily.has(today) ? today : shiftDate(today, -1);
+  let current = 0;
+  while (daily.has(cursor)) {
+    current += 1;
+    cursor = shiftDate(cursor, -1);
+  }
+  const average = dates.length ? sumSeconds(pastRecords) / dates.length : 0;
+  const card = (title, value) => `<div class="analytics-card"><strong>${title}</strong><b>${value}</b></div>`;
+  return `<div class="analytics-grid">
+    ${card("勉強した日数", `${dates.length}日`)}
+    ${card("勉強した日の平均", formatCalendarDuration(average))}
+    ${card("現在の連続日数", `${current}日`)}
+    ${card("最長の連続日数", `${longest}日`)}
+  </div>`;
+}
+
+function renderAnalytics() {
+  const goalId = analyticsDialog.querySelector("[data-analytics-goal]").value;
+  const records = getAnalyticsRecords(goalId);
+  const body = analyticsDialog.querySelector("[data-analytics-body]");
+  const total = `<p class="analytics-total">${formatDuration(sumSeconds(records))}</p>`;
+  body.innerHTML = records.length
+    ? `${total}
+      <h3>科目別学習時間</h3>${renderAnalyticsPie(records)}
+      <h3>期間比較</h3>${renderAnalyticsComparison(records)}
+      <h3>直近14日の推移</h3>${renderAnalyticsTrend(records)}
+      <h3>学習習慣</h3>${renderAnalyticsHabits(records)}`
+    : `${total}<p class="muted-empty">学習時間の記録はまだありません。</p>`;
+}
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-open-analytics]")) return;
+  const select = analyticsDialog.querySelector("[data-analytics-goal]");
+  select.innerHTML = `<option value="">すべて</option>${state.goals.map((goal) => {
+    const parent = state.events.find((item) => item.id === goal.eventId);
+    return `<option value="${escapeHtml(goal.id)}">${escapeHtml(`${parent?.title || "イベント未設定"} ／ ${goal.subject || "科目未設定"} ／ ${goal.title}`)}</option>`;
+  }).join("")}`;
+  renderAnalytics();
+  analyticsDialog.showModal();
+  analyticsDialog.scrollTop = 0;
+});
+
+analyticsDialog.querySelector("[data-analytics-goal]")
+  .addEventListener("change", renderAnalytics);

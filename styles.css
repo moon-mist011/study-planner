@@ -442,7 +442,6 @@ button.calendar-cell:hover { background: #f7faf6; }
 }
 
 .calendar-archive-month { width: 100%; min-height: 32px; padding: 0; border: 0; background: transparent; text-align: left; }
-.calendar-archive-month-label::before { content: "▸"; margin-right: 3px; }
 .calendar-archive-month[aria-expanded="true"] .calendar-archive-month-label::before { content: "▾"; }
 .calendar-archive-subjects { display: grid; gap: 8px; margin: 6px 0 0; padding: 10px 12px; border-radius: 9px; background: #f3f8f3; list-style: none; font-size: 11px; }
 .calendar-archive-subjects li { display: grid; grid-template-columns: minmax(0, 1fr) 40px 72px; gap: 8px; }
@@ -452,4 +451,26 @@ button.calendar-cell:hover { background: #f7faf6; }
 
 .calendar-archive-total-button { min-height: 40px; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; }
 .calendar-archive-total-button::after { content: " ▸"; font-size: 14px; }
-.calendar-archive-total-button[aria-expanded="true"]::after { content: " ▾"; }
+
+.calendar-subject-bar-track { grid-column: 1 / -1; height: 8px; background: #e0ebe1; }
+
+/* 全期間の科目別を開いている間は縦並び */
+.calendar-archive-layout:has(#calendar-archive-total-subjects:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.analytics-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.analytics-dialog { width: min(640px, calc(100% - 20px)); overflow-y: auto; }
+.analytics-dialog select { margin-top: 0; }
+.analytics-dialog h3 { margin: 26px 0 12px; font-size: 14px; }
+.analytics-total { margin: 14px 0 0; text-align: center; color: var(--green-dark); font-size: 36px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.analytics-pie { width: min(220px, 70%); aspect-ratio: 1; margin: 0 auto 16px; border-radius: 50%; }
+.analytics-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 11px; }
+.analytics-list li { display: grid; grid-template-columns: minmax(0, 1fr) 40px 72px; gap: 8px; align-items: center; }
+.analytics-list li > span:first-child { overflow-wrap: anywhere; }
+.analytics-list i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; }
+.analytics-list time { text-align: right; }
+.analytics-trend li { grid-template-columns: 40px minmax(0, 1fr) 56px; }
+.analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.analytics-card { display: grid; gap: 5px; align-content: start; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 10px; }
+.analytics-card b { color: var(--green-dark); font-size: 18px; }
