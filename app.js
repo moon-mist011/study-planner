@@ -1075,6 +1075,7 @@ function renderEvents() {
   elements.events.innerHTML = currentEvents.map((event) => renderEventCard(event)).join("");
   elements.futureEvents.innerHTML = futureEvents.map((event) => renderEventCard(event, true)).join("");
   elements.pastEvents.innerHTML = pastEvents.map((event) => renderEventCard(event, false, "past")).join("");
+  renderPastSection();
 }
 
 function scheduleEventRefresh() {
@@ -1386,6 +1387,7 @@ function renderCalendar() {
   const monthEnd = dateKey(new Date(year, month, daysInMonth));
   const weekCount = Math.ceil((firstWeekday + daysInMonth) / 7);
   const weeks = [];
+  let maxLanes = 0;
   for (let weekIndex = 0; weekIndex < weekCount; weekIndex += 1) {
     const weekStart = shiftDate(monthStart, weekIndex * 7 - firstWeekday);
     const weekEnd = shiftDate(weekStart, 6);
@@ -1407,8 +1409,8 @@ function renderCalendar() {
       const overMinimum = hasOverMinimumRecordForDate(date);
       cells.push(`<button class="calendar-cell${isToday ? " is-today" : ""}${selected ? " is-selected" : ""}${heatLevel ? ` study-level-${heatLevel}` : ""}${overMinimum ? " is-over-minimum" : ""}" type="button" role="gridcell" data-calendar-date="${date}" aria-label="${formatDate(date, { year: "numeric", month: "long", day: "numeric", weekday: "long" })}${scheduleCount ? `、予定${scheduleCount}件` : ""}${studySeconds ? `、勉強時間${formatDuration(studySeconds)}` : ""}${overMinimum ? "、最低量を超えた実績あり" : ""}" aria-pressed="${selected}">
         <span class="calendar-day-number">${Number(date.slice(-2))}</span>
-        ${quizzes.slice(0, 2).map((quiz) => `<span class="calendar-marker quiz">${escapeHtml(quiz.subject)}${quiz.period ? ` ${quiz.period}校時` : ""} ${quiz.kind === "submission" ? `提出物${quiz.title ? ` ${escapeHtml(quiz.title)}` : ""}` : "小テスト"}</span>`).join("")}
-        ${quizzes.length > 2 ? `<span class="calendar-marker-more">ほか${quizzes.length - 2}件</span>` : ""}
+        ${quizzes.slice(0, 1).map((quiz) => `<span class="calendar-marker quiz">${escapeHtml(quiz.subject)}${quiz.period ? ` ${quiz.period}校時` : ""} ${quiz.kind === "submission" ? `提出物${quiz.title ? ` ${escapeHtml(quiz.title)}` : ""}` : "小テスト"}</span>`).join("")}
+        ${quizzes.length > 1 ? `<span class="calendar-marker-more">+${quizzes.length - 1}件</span>` : ""}
         ${studyMinutes ? `<span class="calendar-study-time" title="勉強時間 ${formatDuration(studySeconds)}">${formatCalendarDuration(studySeconds)}</span>` : ""}
       </button>`);
     }
@@ -1444,12 +1446,13 @@ function renderCalendar() {
       ].filter(Boolean).join(" ");
       return `<span class="${classes}" style="grid-column:${startColumn}/${endColumn};grid-row:${lane + 1}" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>`;
     }).join("");
-    const eventSpace = 36 + laneEnds.length * 18;
-    weeks.push(`<section class="calendar-week" style="--event-space:${eventSpace}px">
-      <div class="calendar-days">${cells.join("")}</div>
+    maxLanes = Math.max(maxLanes, laneEnds.length);
+    weeks.push(`<section class="calendar-week">
+    <div class="calendar-days">${cells.join("")}</div>
       <div class="calendar-event-layer" aria-hidden="true">${bands}</div>
     </section>`);
   }
+  elements.calendarGrid.style.setProperty("--event-space", `${36 + maxLanes * 18}px`);
   elements.calendarGrid.innerHTML = weeks.join("");
   renderCalendarAgenda();
   renderStudyArchive();
@@ -3816,3 +3819,92 @@ analyticsDialog.addEventListener("click", (event) => {
   detail.innerHTML = renderAnalyticsDayDetail(dateButton.dataset.chartDate, eventId);
   detail.scrollIntoView({ block: "nearest", behavior: "smooth" });
 });
+
+// ===== 過去セクション =====
+const openPastGroups = new Set();
+
+// 単独のタスク一覧と見出しを画面から外す
+let pastTaskHeading = elements.pastTasks.previousElementSibling;
+while (pastTaskHeading && !pastTaskHeading.matches(".past-list-heading")) {
+  pastTaskHeading = pastTaskHeading.previousElementSibling;
+}
+pastTaskHeading?.remove();
+elements.pastTasks.remove();
+elements.pastTasksEmpty.remove();
+
+// イベントの見出しを先頭用の余白にする
+let pastEventHeading = elements.pastEvents.previousElementSibling;
+while (pastEventHeading && !pastEventHeading.matches(".past-list-heading")) {
+  pastEventHeading = pastEventHeading.previousElementSibling;
+}
+pastEventHeading?.classList.add("first");
+
+// 小テスト・提出物の欄は、イベント欄の後ろに置く
+const pastScheduleContainer = document.createElement("div");
+pastScheduleContainer.className = "past-schedules";
+const emptyIsAfterList = elements.pastEvents.compareDocumentPosition(elements.pastEventsEmpty)
+  & Node.DOCUMENT_POSITION_FOLLOWING;
+(emptyIsAfterList ? elements.pastEventsEmpty : elements.pastEvents).after(pastScheduleContainer);
+
+function isScheduleTask(task) {
+  const pool = state.pools.find((item) => item.id === task.poolId);
+  return Boolean(task.quizId || task.sourceGoalId || pool?.sourceQuizId || pool?.sourceGoalId);
+}
+
+function renderPastGroup(key, title, subtitle, content) {
+  return `<details class="past-group" data-past-group="${escapeHtml(key)}"${openPastGroups.has(key) ? " open" : ""}>
+    <summary><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subtitle)}</span></summary>
+    <div class="past-group-body">${content}</div>
+  </details>`;
+}
+
+function renderPastSection() {
+  const pastTasks = state.tasks
+    .filter((task) => (task.completed || task.status === "closed") && task.date !== today)
+    .filter((task) => matchesSubjectFilter("past", getTaskSubject(task)))
+    .sort(compareTasksByDeadlineAndSubject);
+  const scheduleTasks = pastTasks.filter(isScheduleTask);
+  const eventTasks = pastTasks.filter((task) => !isScheduleTask(task));
+  const filtering = subjectFilters.get("past").size > 0;
+
+  const groups = state.events
+    .map((event) => ({
+      event,
+      tasks: eventTasks.filter((task) => getTaskEventId(task) === event.id),
+      ended: Boolean(event.end && event.end < today),
+    }))
+    .filter(({ event, tasks, ended }) => tasks.length > 0 || (ended
+      && (!filtering || [...getEventSubjects(event)]
+        .some((subject) => matchesSubjectFilter("past", subject)))))
+    .sort((a, b) => (b.event.end || "").localeCompare(a.event.end || ""));
+
+  elements.pastEventsEmpty.hidden = groups.length > 0;
+  elements.pastEvents.innerHTML = groups.map(({ event, tasks }) => {
+    const dates = event.start && event.end
+      ? `${formatDate(event.start)} — ${formatDate(event.end)}`
+      : "日程未設定";
+    return renderPastGroup(
+      `event:${event.id}`,
+      event.title,
+      `${dates} ・ タスク${tasks.length}件`,
+      `${renderEventCard(event, false, "past")}${tasks.map(renderTaskCard).join("")}`,
+    );
+  }).join("");
+
+  pastScheduleContainer.innerHTML = renderPastGroup(
+    "schedules",
+    "小テスト・提出物",
+    `タスク${scheduleTasks.length}件`,
+    scheduleTasks.length
+      ? scheduleTasks.map(renderTaskCard).join("")
+      : '<p class="muted-empty">過去の小テスト・提出物のタスクはありません。</p>',
+  );
+}
+
+// toggleは親に伝わらないため、captureで受け取る
+document.addEventListener("toggle", (event) => {
+  const group = event.target;
+  if (!group.matches?.("[data-past-group]")) return;
+  if (group.open) openPastGroups.add(group.dataset.pastGroup);
+  else openPastGroups.delete(group.dataset.pastGroup);
+}, true);
