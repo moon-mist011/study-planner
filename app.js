@@ -3891,14 +3891,14 @@ function renderPastSection() {
     );
   }).join("");
 
-  pastScheduleContainer.innerHTML = renderPastGroup(
-    "schedules",
-    "小テスト・提出物",
-    `タスク${scheduleTasks.length}件`,
-    scheduleTasks.length
+    pastScheduleContainer.innerHTML = `<details data-past-group="schedules"${openPastGroups.has("schedules") ? " open" : ""}>
+    <summary class="past-schedule-summary">
+      <h3 class="past-list-heading">小テスト・提出物</h3>
+    </summary>
+    <div class="past-schedule-body">${scheduleTasks.length
       ? scheduleTasks.map(renderTaskCard).join("")
-      : '<p class="muted-empty">過去の小テスト・提出物のタスクはありません。</p>',
-  );
+      : '<p class="muted-empty">過去の小テスト・提出物のタスクはありません。</p>'}</div>
+  </details>`;
 }
 
 // toggleは親に伝わらないため、captureで受け取る

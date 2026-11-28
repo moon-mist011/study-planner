@@ -506,3 +506,11 @@ calendar-grid .calendar-marker, .calendar-grid, .calendar-marker-more { flex: 0 
 @media (max-width: 560px) {
   .calendar-grid .calendar-cell { height: max(100px, calc(var(--event-space) + 56px)); }
 }
+
+.past-schedules { margin-top: 20px; }
+.past-schedule-summary { padding: 6px 0; cursor: pointer; list-style: none; }
+.past-schedule-summary::-webkit-details-marker { display: none; }
+.past-schedule-summary::marker { content: ""; }
+.past-schedule-summary .past-list-heading { margin: 0; }
+.past-schedule-summary:hover h3 { color: var(--green); }
+.past-schedule-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 11px; padding-top: 8px; }
