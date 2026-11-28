@@ -500,8 +500,8 @@ button.calendar-cell:hover { background: #f7faf6; }
 .past-group-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0 10px 10px; }
 .past-schedules { margin-top: 12px; }
 
-calendar-grid .calendar-cell { height: max(116px, calc(var(--event-space) + 56px)); min-height: 0; padding-bottom: 18px; }
-calendar-grid .calendar-marker, .calendar-grid, .calendar-marker-more { flex: 0 0 auto; line-height: 12px; }
+.calendar-grid .calendar-cell { height: max(116px, calc(var(--event-space) + 56px)); min-height: 0; padding-bottom: 18px; }
+.calendar-grid .calendar-marker, .calendar-grid, .calendar-marker-more { flex: 0 0 auto; line-height: 12px; }
 
 @media (max-width: 560px) {
   .calendar-grid .calendar-cell { height: max(100px, calc(var(--event-space) + 56px)); }
